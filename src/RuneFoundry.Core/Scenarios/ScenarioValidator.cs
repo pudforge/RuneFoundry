@@ -39,6 +39,9 @@ public static class ScenarioValidator
     /// <summary>Player 15 is the neutral rescue/passive slot rather than an opponent.</summary>
     public const int NeutralPlayer = 15;
 
+    /// <summary>The Circle of Power, which is what a delivery is delivered to.</summary>
+    public const byte CircleOfPower = 0x64;
+
     public static IReadOnlyList<Finding> Validate(ScenarioRules rules, PudFile? map, int localPlayer = 0)
     {
         var findings = new List<Finding>();
@@ -128,10 +131,15 @@ public static class ScenarioValidator
     private static IEnumerable<Finding> CheckReachable(Condition condition, PudFile map,
                                                        int localPlayer, string where)
     {
-        if (CounterCatalog.Find(condition.Counter) is not { } counter) yield break;
-        if (counter.UnitTypes.Count == 0) yield break;
+        if (condition.Kind is not ConditionKind.Delivered)
+        {
+            if (CounterCatalog.Find(condition.Counter) is not { } known) yield break;
+            if (known.UnitTypes.Count == 0) yield break;
+        }
 
-        if (condition.Kind == ConditionKind.EnemyHasNone)
+        var counter = CounterCatalog.Find(condition.Counter);
+
+        if (condition.Kind == ConditionKind.EnemyHasNone && counter is not null)
         {
             var enemies = map.Units.Count(u => u.Player != localPlayer
                                                && u.Player != NeutralPlayer
@@ -143,7 +151,18 @@ public static class ScenarioValidator
                     + "starts with none. It is true from the first tick.");
         }
 
-        if (condition.Kind == ConditionKind.UnitAlive)
+        if (condition.Kind == ConditionKind.Delivered)
+        {
+            // A delivery is counted when a unit reaches a Circle of Power. A map without
+            // one leaves the counter at zero for the whole mission, so the rule cannot be
+            // met and nothing in the game says why.
+            if (!map.Units.Any(u => u.Type == CircleOfPower))
+                yield return new Finding(FindingLevel.Problem,
+                    $"{where} waits for units brought to a Circle of Power, and this map has "
+                    + "none. Place one in the map editor, or use a different rule.");
+        }
+
+        if (condition.Kind == ConditionKind.UnitAlive && counter is not null)
         {
             var alive = map.Units.Count(u => counter.UnitTypes.Contains(u.Type)
                                              && (condition.Player is null || u.Player == condition.Player));

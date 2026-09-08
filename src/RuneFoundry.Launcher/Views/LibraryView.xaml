@@ -1,0 +1,176 @@
+<UserControl x:Class="RuneFoundry.Launcher.Views.LibraryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource Bg}"
+             AllowDrop="True" Drop="OnFilesDropped" DragOver="OnDragOver">
+
+    <Grid Margin="{StaticResource Block}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="380" MinWidth="280"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*" MinWidth="300"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Choose what to play" Style="{StaticResource Heading}"/>
+                        <TextBlock Text="One mod at a time. Pick a row, then Play."
+                                   Style="{StaticResource Dim}" TextWrapping="Wrap" Margin="{StaticResource GapBelow}"/>
+                    </StackPanel>
+
+                    <ListBox Grid.Row="1" x:Name="ModList"
+                             PreviewMouseRightButtonDown="OnModRightClick" SelectionChanged="OnModSelected"
+                             MouseDoubleClick="OnModDoubleClick"
+                             HorizontalContentAlignment="Stretch" BorderThickness="{StaticResource NoBorder}"
+                             Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             VirtualizingPanel.ScrollUnit="Pixel">
+                        <ListBox.ContextMenu>
+                            <ContextMenu Opened="OnModMenuOpening">
+                                <MenuItem x:Name="ModPlayItem" Header="_Play" Click="OnPlay"
+                                          InputGestureText="Double-click"/>
+                                <MenuItem x:Name="ModApplyItem" Header="_Apply without playing" Click="OnApply"/>
+                                <Separator/>
+                                <MenuItem x:Name="ModVerifyItem" Header="_Verify files" Click="OnVerify"/>
+                                <MenuItem x:Name="ModFolderItem" Header="Show in _Explorer" Click="OnShowModFolder"/>
+                                <Separator/>
+                                <MenuItem x:Name="ModRemoveItem" Header="_Remove from library" Click="OnRemoveMod"/>
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="10,8"/>
+                                <Setter Property="Margin" Value="0,0,0,4"/>
+                                <Setter Property="Background" Value="{DynamicResource PanelRaised}"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                                        <Setter Property="Background" Value="{DynamicResource Selection}"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Dim}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding Badge}"
+                                               Foreground="{DynamicResource Good}" FontSize="{StaticResource SmallText}"
+                                               VerticalAlignment="Center" Margin="{StaticResource GapLeft}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="{StaticResource SectionAbove}">
+                        <Button Click="OnAddMod">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource IconPath}" Data="{StaticResource IconFilePlus}"
+                                      Margin="{StaticResource GapRight}"/>
+                                <TextBlock Text="Add mod…" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RemoveButton" Click="OnRemoveMod" Margin="{StaticResource GapLeft}">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource IconPath}" Data="{StaticResource IconTrash2}"
+                                      Margin="{StaticResource GapRight}"/>
+                                <TextBlock Text="Remove" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource Card}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <TextBlock Text="Details" Style="{StaticResource Heading}"/>
+                        <TextBlock x:Name="DetailEmpty" Style="{StaticResource Dim}"
+                                   Text="Select a mod, or drop a .w2mod file onto this window to add one."
+                                   TextWrapping="Wrap"/>
+
+                        <StackPanel x:Name="DetailBody" Visibility="Collapsed">
+                            <TextBlock x:Name="DetailName" FontSize="{StaticResource TitleText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="DetailMeta" Style="{StaticResource Dim}" Margin="{StaticResource FieldRow}"/>
+                            <TextBlock x:Name="DetailDescription" TextWrapping="Wrap" Margin="{StaticResource SectionBelow}"/>
+
+                            <TextBlock x:Name="FilesHeading" Text="Files" Style="{StaticResource Heading}"
+                                       Margin="{StaticResource SpacedRow}"/>
+                            <ListBox x:Name="FileList"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             VirtualizingPanel.ScrollUnit="Pixel" MaxHeight="340" BorderThickness="{StaticResource Hairline}"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Padding" Value="4,2"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Marker}" Width="16"
+                                                       Foreground="{DynamicResource Accent}" FontFamily="Consolas"/>
+                                            <TextBlock Text="{Binding Path}" FontFamily="Consolas" FontSize="{StaticResource SmallText}"/>
+                                            <TextBlock Text="{Binding Note}" Style="{StaticResource Dim}"
+                                                       FontSize="{StaticResource SmallText}" Margin="{StaticResource GapLeft}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="{StaticResource SectionAbove}">
+            <StackPanel>
+                <TextBlock x:Name="StatusText" Style="{StaticResource Dim}" Margin="{StaticResource SectionBelow}"
+                           TextTrimming="CharacterEllipsis"/>
+                <ProgressBar x:Name="Progress" Visibility="Collapsed" Margin="{StaticResource SectionBelow}"/>
+                <Grid>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="ApplyButton" Content="Apply" Click="OnApply" Margin="{StaticResource GapRight}"
+                                MinWidth="100"
+                                ToolTip="Switch the game over to the selected row without launching."/>
+                        <Button x:Name="PlayButton" Click="OnPlay" Style="{StaticResource PrimaryButton}" MinWidth="150">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource IconPath}" Data="{StaticResource IconPlay}"
+                                      Stroke="{DynamicResource Bg}" Margin="{StaticResource GapRight}"/>
+                                <TextBlock x:Name="PlayLabel" Text="Play" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

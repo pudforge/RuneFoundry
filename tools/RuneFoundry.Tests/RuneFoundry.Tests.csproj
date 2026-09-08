@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Needed to exercise the WPF preview path, where the image-cache bug lived. -->
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RuneFoundry.Core\RuneFoundry.Core.csproj" />
+    <ProjectReference Include="..\..\src\RuneFoundry.UI\RuneFoundry.UI.csproj" />
+  </ItemGroup>
+
+</Project>

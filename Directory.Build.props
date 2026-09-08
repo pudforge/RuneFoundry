@@ -1,0 +1,17 @@
+<Project>
+
+  <!-- One version for everything that ships together. The loader and the editor are one
+       download and are only ever built as a pair, so two version numbers could only
+       disagree. Raise this to cut a release; the packaging script names the zip after it. -->
+  <PropertyGroup>
+    <Version>0.5.0-alpha</Version>
+    <Company>RuneFoundry</Company>
+    <Authors>pudforge</Authors>
+    <Copyright>© 2026 pudforge</Copyright>
+
+    <!-- Warcraft II is Blizzard's. Saying so in the file properties costs nothing and
+         answers the question before anyone has to ask it. -->
+    <Product>RuneFoundry</Product>
+  </PropertyGroup>
+
+</Project>

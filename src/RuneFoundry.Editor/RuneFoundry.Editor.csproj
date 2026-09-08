@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>RuneFoundry.Editor</RootNamespace>
+    <AssemblyName>RuneFoundry Editor</AssemblyName>
+    <Product>RuneFoundry Campaign Editor</Product>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>../../assets/RuneFoundry.Editor.ico</ApplicationIcon>
+    <!-- The loader and the editor ship together in one zip, so they publish into one
+         folder and share a single copy of .NET and WPF. Two single-file executables would
+         each carry their own: 126 MB zipped against 67, and a self-extract on every launch
+         that costs ~180 ms of startup for bytes the zip had already saved. No runtime
+         install is needed either way. -->
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- Required to call Explorer's Shell.Application through IDispatch, which is how the
+         game is started without this process's administrator token. Off by default in a
+         single-file publish, and its absence is silent. -->
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RuneFoundry.Core\RuneFoundry.Core.csproj" />
+    <ProjectReference Include="..\RuneFoundry.UI\RuneFoundry.UI.csproj" />
+  </ItemGroup>
+
+  <!-- The .ico is generated from the drawing, so an updated drawing cannot be left behind
+       in the exe. Inputs/Outputs keep this to the builds where the drawing actually moved,
+       and ApplicationIcon is read after it runs, so the fresh file is the one embedded.
+
+       One drawing per program: the two ship side by side in the same folder, and a shared
+       icon would leave people picking between two identical entries in a taskbar. -->
+  <Target Name="MakeAppIcon" BeforeTargets="BeforeBuild"
+          Inputs="$(MSBuildProjectDirectory)/../../assets/app-icon-src-editor.png"
+          Outputs="$(MSBuildProjectDirectory)/../../assets/RuneFoundry.Editor.ico">
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../.."
+          Command="powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tools/make-icon.ps1 assets/app-icon-src-editor.png assets/RuneFoundry.Editor.ico" />
+  </Target>
+
+</Project>

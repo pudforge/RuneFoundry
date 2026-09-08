@@ -1,0 +1,39 @@
+<UserControl x:Class="RuneFoundry.Editor.Views.ActTimingView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}">
+        <StackPanel>
+            <TextBlock Text="Act title card timing" FontWeight="SemiBold"/>
+
+            <TextBlock x:Name="Blurb" Style="{StaticResource Dim}" TextWrapping="Wrap"
+                       FontSize="{StaticResource SmallText}"
+                       Margin="{StaticResource GapBelow}"/>
+
+            <DockPanel Margin="{StaticResource TightBelow}">
+                <TextBlock DockPanel.Dock="Left" Text="Stays for" VerticalAlignment="Center"
+                           Margin="{StaticResource GapRight}"/>
+
+                <TextBlock DockPanel.Dock="Right" x:Name="Readout" VerticalAlignment="Center"
+                           FontWeight="SemiBold" MinWidth="74" TextAlignment="Right"/>
+
+                <Slider x:Name="Seconds" VerticalAlignment="Center"
+                        TickFrequency="0.5" IsSnapToTickEnabled="True"
+                        ValueChanged="OnSecondsChanged"/>
+            </DockPanel>
+
+            <TextBlock x:Name="State" Style="{StaticResource Dim}" TextWrapping="Wrap"
+                       FontSize="{StaticResource SmallText}"
+                       Margin="{StaticResource TightBelow}"/>
+
+            <WrapPanel>
+                <Button x:Name="ApplyButton" Content="Apply" Click="OnApply"
+                        Padding="{StaticResource ButtonPadding}"
+                        Margin="{StaticResource ButtonGap}"/>
+                <Button x:Name="ResetButton" Content="Reset to game default" Click="OnReset"
+                        Padding="{StaticResource ButtonPadding}"
+                        Margin="{StaticResource ButtonGap}"/>
+            </WrapPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

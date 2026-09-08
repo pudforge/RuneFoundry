@@ -1,0 +1,98 @@
+<Window x:Class="RuneFoundry.UI.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Settings" Height="760" Width="640"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        ShowInTaskbar="False">
+
+    <Grid Margin="{StaticResource Block}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Game folder -->
+        <Border Grid.Row="0" Style="{StaticResource Card}" Margin="{StaticResource SectionBelow}">
+            <StackPanel>
+                <TextBlock Text="Game folder" Style="{StaticResource Heading}"/>
+                <TextBlock Style="{StaticResource Dim}" TextWrapping="Wrap" Margin="{StaticResource GapBelow}"
+                           Text="Your Warcraft II Remastered folder. Mods are applied to x86\Data."/>
+
+                <TextBox x:Name="PathBox" IsReadOnly="True" Margin="{StaticResource GapBelow}"
+                         FontFamily="Consolas" FontSize="{StaticResource SmallText}"
+                         Text="(not set)"/>
+
+                <TextBlock x:Name="PathStatus" Style="{StaticResource Dim}" TextWrapping="Wrap"
+                           Margin="{StaticResource SectionBelow}"/>
+
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Browse…" Click="OnBrowse"/>
+                    <Button Content="Detect automatically" Click="OnDetect" Margin="{StaticResource GapLeft}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Backup vault -->
+        <Border Grid.Row="1" Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Text="Backup vault" Style="{StaticResource Heading}"/>
+                <TextBlock Style="{StaticResource Dim}" TextWrapping="Wrap" Margin="{StaticResource GapBelow}"
+                           Text="The vault holds the original of every file your mods replace."/>
+
+                <TextBox x:Name="VaultBox" IsReadOnly="True" Margin="{StaticResource GapBelow}"
+                         FontFamily="Consolas" FontSize="{StaticResource SmallText}"/>
+
+                <TextBlock x:Name="VaultStatus" Style="{StaticResource Dim}" Margin="{StaticResource SectionBelow}"/>
+
+                <Button Content="Show in Explorer" Click="OnOpenVault" HorizontalAlignment="Left"/>
+            </StackPanel>
+        </Border>
+
+        <!-- How to launch -->
+        <Border Grid.Row="2" Style="{StaticResource Card}" Margin="{StaticResource SectionAbove}" VerticalAlignment="Top">
+            <StackPanel>
+                <TextBlock Text="How to launch" Style="{StaticResource Heading}"/>
+                <RadioButton x:Name="LaunchViaBattleNet" GroupName="Launch" Margin="{StaticResource GapBelow}"
+                             Checked="OnLaunchMethodChanged">
+                    <StackPanel>
+                        <TextBlock Text="Let Battle.net launch the game (recommended)"/>
+                        <TextBlock x:Name="BattleNetStatus" Style="{StaticResource Dim}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="LaunchDirect" GroupName="Launch" Checked="OnLaunchMethodChanged">
+                    <StackPanel>
+                        <TextBlock Text="Start Warcraft II.exe myself"/>
+                        <TextBlock Style="{StaticResource Dim}" TextWrapping="Wrap"
+                                   Text="Uses the client's own command line. Battle.net must be running and signed in."/>
+                    </StackPanel>
+                </RadioButton>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="3" Style="{StaticResource Card}" Margin="{StaticResource SectionAbove}" VerticalAlignment="Top">
+            <StackPanel>
+                <TextBlock Text="AI script timing" Style="{StaticResource Heading}"/>
+                <TextBlock Style="{StaticResource Dim}" TextWrapping="Wrap" Margin="{StaticResource GapBelow}"
+                           Text="Game ticks per second. Used to show AI sleep values as seconds. 30 on Normal speed, 52 on Fastest."/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBox x:Name="TicksBox" Width="70" TextChanged="OnTicksChanged"/>
+                    <TextBlock Text="ticks per second" Style="{StaticResource Dim}"
+                               VerticalAlignment="Center" Margin="{StaticResource GapLeft}"/>
+                    <TextBlock x:Name="TicksExample" Style="{StaticResource Dim}"
+                               VerticalAlignment="Center" Margin="{StaticResource BlockLeft}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="4" x:Name="Elevation" Style="{StaticResource Dim}"
+                   TextWrapping="Wrap" VerticalAlignment="Bottom" Margin="{StaticResource IndentedSection}"/>
+
+        <Button Grid.Row="5" Content="Close" Click="OnClose" IsDefault="True" IsCancel="True"
+                HorizontalAlignment="Right" MinWidth="100" Margin="{StaticResource BlockAbove}"
+                Style="{StaticResource PrimaryButton}"/>
+    </Grid>
+</Window>

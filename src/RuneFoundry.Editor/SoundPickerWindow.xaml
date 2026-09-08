@@ -1,0 +1,64 @@
+<Window x:Class="RuneFoundry.Editor.SoundPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Choose a sound" Height="620" Width="560"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+
+    <Grid Margin="{StaticResource Block}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="{StaticResource GapBelow}">
+            <TextBlock x:Name="Heading" Style="{StaticResource Heading}" Text="Choose a sound"/>
+            <TextBlock x:Name="Note" Style="{StaticResource Dim}" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="{StaticResource GapBelow}">
+            <TextBox x:Name="FilterBox" TextChanged="OnFilterChanged"/>
+            <TextBlock x:Name="FilterHint" Text="Filter…" Style="{StaticResource Dim}"
+                       IsHitTestVisible="False" Margin="{StaticResource GapLeft}" VerticalAlignment="Center"/>
+        </Grid>
+
+        <ListBox Grid.Row="2" x:Name="SoundList" HorizontalContentAlignment="Stretch"
+                 SelectionChanged="OnSelectionChanged" MouseDoubleClick="OnUseChosen">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <DockPanel Margin="{StaticResource Micro}">
+                        <Button DockPanel.Dock="Left" Style="{StaticResource RowAction}"
+                                Click="OnPlay" Margin="{StaticResource GapRight}" ToolTip="Listen">
+                            <Path Width="11" Height="11" Stretch="Uniform"
+                                  Fill="{DynamicResource Text}">
+                                <Path.Style>
+                                    <Style TargetType="Path">
+                                        <Setter Property="Data" Value="{StaticResource IconPlay}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                                <Setter Property="Data" Value="{StaticResource IconSquare}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Path.Style>
+                            </Path>
+                        </Button>
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding Folder}"
+                                   Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}"
+                                   VerticalAlignment="Center" Margin="{StaticResource GapLeft}"/>
+                        <TextBlock Text="{Binding FileName}" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="{StaticResource SectionAbove}">
+            <Button Content="Cancel" Click="OnCancel" MinWidth="90" Margin="{StaticResource GapRight}"/>
+            <Button x:Name="UseButton" Content="Use this sound" Click="OnUseChosen"
+                    Style="{StaticResource PrimaryButton}" MinWidth="130" IsEnabled="False"/>
+        </StackPanel>
+    </Grid>
+</Window>

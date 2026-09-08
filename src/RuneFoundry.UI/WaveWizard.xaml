@@ -1,0 +1,107 @@
+<Window x:Class="RuneFoundry.UI.WaveWizard"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add an attack wave"
+        SizeToContent="Height" Width="480" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}" Foreground="{DynamicResource Text}">
+
+    <!-- One sleep opens the wave, then each chosen domain builds, gathers and goes. The
+         domains are separate settings in the game, so a wave can send land and air at
+         once; slot $00, the default AI on most maps, does exactly that. -->
+    <StackPanel Margin="{StaticResource Block}">
+
+        <TextBlock Text="Add an attack wave"
+                   FontSize="{StaticResource SubheadText}" FontWeight="SemiBold"
+                   Margin="{StaticResource GapBelow}"/>
+
+        <Grid Margin="{StaticResource BlockBelow}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="Waits" VerticalAlignment="Center"
+                       Margin="{StaticResource FieldRow}"/>
+            <ComboBox Grid.Column="1" x:Name="DelayBox"
+                      Margin="{StaticResource FieldRow}" SelectionChanged="OnChanged"/>
+        </Grid>
+
+        <ItemsControl x:Name="DomainList" Margin="{StaticResource BlockBelow}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Margin="{StaticResource GapBelow}">
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <CheckBox Grid.Column="0" Content="{Binding Label}"
+                                      IsChecked="{Binding IsOn, Mode=TwoWay}"
+                                      VerticalAlignment="Center"/>
+
+                            <ComboBox Grid.Column="1" Width="110"
+                                      ItemsSource="{Binding SizeChoices}"
+                                      SelectedIndex="{Binding SizeIndex, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsOn}"/>
+                        </Grid>
+
+                        <ItemsControl ItemsSource="{Binding Units}"
+                                      Margin="{StaticResource IndentTop}">
+                            <ItemsControl.Style>
+                                <Style TargetType="ItemsControl">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsOn}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ItemsControl.Style>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="{StaticResource TightBelow}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}"
+                                                   Style="{StaticResource Dim}"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBox Grid.Column="1" Width="52" TextAlignment="Right"
+                                                 MaxLength="3"
+                                                 Text="{Binding Count, Mode=TwoWay,
+                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                BorderThickness="{StaticResource Hairline}" CornerRadius="{StaticResource Radius}"
+                Padding="{StaticResource CardPadding}" Margin="{StaticResource BlockBelow}">
+            <StackPanel>
+                <TextBlock x:Name="Preview" TextWrapping="Wrap" Style="{StaticResource Dim}"
+                           FontSize="{StaticResource SmallText}"/>
+                <TextBlock x:Name="Room" TextWrapping="Wrap" Style="{StaticResource Dim}"
+                           FontSize="{StaticResource SmallText}"
+                           Margin="{StaticResource TightAbove}"/>
+            </StackPanel>
+        </Border>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Cancel" IsCancel="True" Padding="{StaticResource ButtonPadding}"
+                    Margin="{StaticResource ButtonGap}"/>
+            <Button x:Name="AddButton" Content="Add the wave" Click="OnAdd" IsDefault="True"
+                    Style="{StaticResource PrimaryButton}"
+                    Padding="{StaticResource ButtonPadding}"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

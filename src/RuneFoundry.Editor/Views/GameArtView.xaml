@@ -1,0 +1,81 @@
+<UserControl x:Class="RuneFoundry.Editor.Views.GameArtView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:RuneFoundry.UI;assembly=RuneFoundry.UI"
+             xmlns:local="clr-namespace:RuneFoundry.Editor.Views">
+
+    <!-- Declared here because a converter referenced but not declared kills the whole view
+         at load, silently, with the window never appearing. -->
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="The game's own pictures" Style="{StaticResource Heading}"/>
+
+        <TextBlock Grid.Row="1" Style="{StaticResource Dim}" TextWrapping="Wrap"
+                   FontSize="{StaticResource SmallText}" Margin="{StaticResource GapBelow}"
+                   Text="These pictures belong to the whole game. A replacement shows in every campaign and in skirmish. RuneFoundry scales what you supply to the size beside it."/>
+
+        <ui:BusyStrip Grid.Row="2" x:Name="Busy" Margin="{StaticResource GapBelow}"/>
+
+        <StackPanel Grid.Row="3">
+        <ItemsControl x:Name="ArtList">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}"
+                            Margin="{StaticResource GapBelow}">
+                        <DockPanel>
+                            <Border DockPanel.Dock="Left" Width="150" Height="86"
+                                    Background="{DynamicResource BgDeep}"
+                                    BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="{StaticResource Hairline}"
+                                    CornerRadius="{StaticResource Radius}"
+                                    Margin="{StaticResource GapRight}">
+                                <Image Source="{Binding Thumbnail}" Stretch="Uniform"
+                                       Margin="{StaticResource Tight}"
+                                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                            </Border>
+
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding Shape}" Style="{StaticResource Dim}"
+                                           FontSize="{StaticResource SmallText}"/>
+                                <TextBlock Text="{Binding State}" Style="{StaticResource Dim}"
+                                           FontSize="{StaticResource SmallText}"
+                                           Margin="{StaticResource TightBelow}"/>
+
+                                <WrapPanel>
+                                    <Button Content="Replace…" Click="OnReplace"
+                                            Padding="{StaticResource ButtonPadding}"
+                                            Margin="{StaticResource ButtonGap}"/>
+                                    <Button Content="Reset to game default" Click="OnReset"
+                                            IsEnabled="{Binding Changed}"
+                                            Padding="{StaticResource ButtonPadding}"
+                                            Margin="{StaticResource ButtonGap}"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- The movie that belongs to the game rather than to a campaign, kept beside the
+             pictures that do, so "what does my mod change about the game as a whole" is
+             one place. -->
+        <local:MediaListView x:Name="MoviesPane" Margin="{StaticResource SectionAbove}"/>
+
+        <!-- The music is the game's too, and it is a lot of it: nineteen tracks over half a
+             gigabyte, most shipped twice. -->
+        <local:MediaListView x:Name="MusicPane" Margin="{StaticResource SectionAbove}"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

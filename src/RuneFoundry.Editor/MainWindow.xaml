@@ -1,0 +1,86 @@
+<Window x:Class="RuneFoundry.Editor.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="RuneFoundry Campaign Editor" Height="820" Width="1340"
+        MinHeight="620" MinWidth="1000"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Menu bar, where every Windows application puts one. -->
+        <Border Grid.Row="0" Background="{DynamicResource BgDeep}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="{StaticResource BottomRule}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <Menu Grid.Column="0" HorizontalAlignment="Left" Padding="{StaticResource TightPadding}">
+                    <MenuItem Header="_File" SubmenuOpened="OnFileMenuOpened">
+                        <MenuItem x:Name="NewMenuItem" Header="_New project…" Click="OnNewProject"
+                                  InputGestureText="Ctrl+N"/>
+                        <MenuItem x:Name="OpenMenuItem" Header="_Open project…" Click="OnOpenProject"
+                                  InputGestureText="Ctrl+O"/>
+                        <MenuItem x:Name="RecentMenuItem" Header="Open _recent"/>
+                        <Separator/>
+                        <MenuItem x:Name="SaveMenuItem" Header="_Save" Click="OnSaveProject"
+                                  InputGestureText="Ctrl+S"/>
+                        <MenuItem x:Name="SaveAsMenuItem" Header="Save _as…" Click="OnSaveProjectAs"/>
+                        <MenuItem x:Name="CloseMenuItem" Header="_Close project" Click="OnCloseProject"/>
+                        <Separator/>
+                        <MenuItem x:Name="BuildMenuItem" Header="_Build .w2mod…" Click="OnBuild"
+                                  InputGestureText="Ctrl+B"/>
+                        <MenuItem x:Name="TestMenuItem" Header="Save &amp; _test" Click="OnTestInGame"
+                                  InputGestureText="F5"
+                                  ToolTip="RuneFoundry applies this project and starts the game."/>
+                        <Separator/>
+                        <MenuItem x:Name="OpenFolderMenuItem" Header="Open project _folder"
+                                  Click="OnOpenProjectFolder"/>
+                        <Separator/>
+                        <MenuItem Header="E_xit" Click="OnExit"/>
+                    </MenuItem>
+
+                    <!-- Named for what it holds rather than "Edit", because the menu says
+                         what it will take back: "Undo Footman hit points 60 to 90". -->
+                    <MenuItem Header="_Edit" SubmenuOpened="OnEditMenuOpened">
+                        <MenuItem x:Name="UndoMenuItem" Header="Undo" Click="OnUndo"
+                                  InputGestureText="Ctrl+Z"/>
+                        <MenuItem x:Name="RedoMenuItem" Header="Redo" Click="OnRedo"
+                                  InputGestureText="Ctrl+Y"/>
+                    </MenuItem>
+
+                    <MenuItem Header="_Game">
+                        <MenuItem Header="_Verify files" Click="OnVerify"
+                                  ToolTip="RuneFoundry compares every replaced file with the mod."/>
+                        <MenuItem Header="Open backup _vault" Click="OnOpenVault"/>
+                    </MenuItem>
+
+                    <MenuItem Header="_View">
+                        <MenuItem Header="_Theme">
+                            <MenuItem x:Name="ThemeSystemItem" Header="Match _Windows"
+                                      IsCheckable="True" Click="OnThemeChosen" Tag="system"/>
+                            <MenuItem x:Name="ThemeDarkItem" Header="_Dark"
+                                      IsCheckable="True" Click="OnThemeChosen" Tag="dark"/>
+                            <MenuItem x:Name="ThemeLightItem" Header="_Light"
+                                      IsCheckable="True" Click="OnThemeChosen" Tag="light"/>
+                        </MenuItem>
+                        <Separator/>
+                        <MenuItem Header="_Settings…" Click="OnOpenSettings"/>
+                    </MenuItem>
+                </Menu>
+
+                <TextBlock x:Name="GameBadge" Grid.Column="1" Style="{StaticResource Dim}"
+                           VerticalAlignment="Center" HorizontalAlignment="Right"
+                           TextTrimming="CharacterEllipsis" MaxWidth="480"
+                           Margin="{StaticResource HeaderInset}" Visibility="Collapsed"/>
+            </Grid>
+        </Border>
+
+        <ContentControl Grid.Row="1" x:Name="EditorHost"/>
+    </Grid>
+</Window>

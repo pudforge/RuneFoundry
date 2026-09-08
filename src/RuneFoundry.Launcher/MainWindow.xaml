@@ -1,0 +1,62 @@
+<Window x:Class="RuneFoundry.Launcher.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="RuneFoundry Launcher" Height="720" Width="1040"
+        MinHeight="520" MinWidth="760"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Menu bar, where every Windows application puts one. -->
+        <Border Grid.Row="0" Background="{DynamicResource BgDeep}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="{StaticResource BottomRule}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <Menu Grid.Column="0" HorizontalAlignment="Left" Padding="{StaticResource TightPadding}">
+                    <MenuItem Header="_File">
+                        <MenuItem Header="_Install a mod…" Click="OnInstallMod"/>
+                        <Separator/>
+                        <MenuItem Header="E_xit" Click="OnExit"/>
+                    </MenuItem>
+
+                    <MenuItem Header="_Game">
+                        <MenuItem Header="_Play selected" Click="OnPlay" InputGestureText="F6"/>
+                        <MenuItem Header="_Apply selected" Click="OnApply"/>
+                        <Separator/>
+                        <MenuItem Header="_Verify files" Click="OnVerify"
+                                  ToolTip="RuneFoundry compares every replaced file with the mod."/>
+                        <MenuItem Header="Open backup _vault" Click="OnOpenVault"/>
+                    </MenuItem>
+
+                    <MenuItem Header="_View">
+                        <MenuItem Header="_Theme">
+                            <MenuItem x:Name="ThemeSystemItem" Header="Match _Windows"
+                                      IsCheckable="True" Click="OnThemeChosen" Tag="system"/>
+                            <MenuItem x:Name="ThemeDarkItem" Header="_Dark"
+                                      IsCheckable="True" Click="OnThemeChosen" Tag="dark"/>
+                            <MenuItem x:Name="ThemeLightItem" Header="_Light"
+                                      IsCheckable="True" Click="OnThemeChosen" Tag="light"/>
+                        </MenuItem>
+                        <Separator/>
+                        <MenuItem Header="_Settings…" Click="OnOpenSettings"/>
+                    </MenuItem>
+                </Menu>
+
+                <TextBlock x:Name="GameBadge" Grid.Column="1" Style="{StaticResource Dim}"
+                           VerticalAlignment="Center" HorizontalAlignment="Right"
+                           TextTrimming="CharacterEllipsis" MaxWidth="480"
+                           Margin="{StaticResource HeaderInset}" Visibility="Collapsed"/>
+            </Grid>
+        </Border>
+
+        <ContentControl Grid.Row="1" x:Name="LibraryHost"/>
+    </Grid>
+</Window>

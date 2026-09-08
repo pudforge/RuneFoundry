@@ -1,0 +1,518 @@
+<UserControl x:Class="RuneFoundry.Editor.Views.CampaignView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:RuneFoundry.UI;assembly=RuneFoundry.UI"
+             xmlns:local="clr-namespace:RuneFoundry.Editor.Views">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- One template, two lists: a mission's briefing pages and the
+             campaign's closing screen are the same thing to edit. -->
+        <DataTemplate x:Key="BriefingPage">
+                                    <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}" Margin="{StaticResource GapBelow}">
+                                        <Border.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="_Replace the recording…" Click="OnReplaceSpeech"/>
+                                                <MenuItem Header="Si_lence"
+                                                          Click="OnSilenceSpeech"
+                                                          ToolTip="The page shows its text with no speech."/>
+                                                <Separator/>
+                                                <MenuItem Header="Reset to _game default"
+                                                          Click="OnResetSpeech"
+                                                          IsEnabled="{Binding SpeechOverridden}"/>
+                                            </ContextMenu>
+                                        </Border.ContextMenu>
+
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Label}" FontWeight="SemiBold"
+                                                       FontSize="{StaticResource SmallText}" Margin="{StaticResource GapBelow}"/>
+
+                                            <TextBox Text="{Binding Text, Mode=TwoWay,
+                                                         UpdateSourceTrigger=PropertyChanged}"
+                                                     TextChanged="OnTextEdited"
+                                                     LostFocus="OnTextLostFocus"
+                                                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="90"
+                                                     VerticalScrollBarVisibility="Auto" Margin="{StaticResource GapBelow}"/>
+
+                                            <TextBlock Text="{Binding SpeechPath}" FontFamily="Consolas"
+                                                       FontSize="{StaticResource SmallText}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding SpeechState}" Style="{StaticResource Dim}"
+                                                       FontSize="{StaticResource SmallText}" Margin="{StaticResource RowInset}"/>
+                                            <WrapPanel>
+                                                <Button Click="OnPlaySpeech" Margin="{StaticResource ButtonGap}" Padding="{StaticResource ButtonPadding}"
+                                                        MinWidth="72">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Path Width="11" Height="11" Margin="{StaticResource GapRight}"
+                                                              VerticalAlignment="Center" Stretch="Uniform"
+                                                              Fill="{DynamicResource Text}">
+                                                            <Path.Style>
+                                                                <Style TargetType="Path">
+                                                                    <Setter Property="Data"
+                                                                            Value="{StaticResource IconPlay}"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsPlaying}"
+                                                                                     Value="True">
+                                                                            <Setter Property="Data"
+                                                                                    Value="{StaticResource IconSquare}"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Path.Style>
+                                                        </Path>
+                                                        <TextBlock Text="{Binding PlayLabel}"
+                                                                   VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button Content="Replace…" Click="OnReplaceSpeech"
+                                                        Margin="{StaticResource ButtonGap}" Padding="{StaticResource ButtonPadding}"/>
+                                                <Button Content="Silence" Click="OnSilenceSpeech"
+                                                        ToolTip="The page shows its text with no speech."
+                                                        Margin="{StaticResource ButtonGap}" Padding="{StaticResource ButtonPadding}"/>
+                                                <Button Content="Reset" Click="OnResetSpeech"
+                                                        IsEnabled="{Binding SpeechOverridden}"
+                                                        ToolTip="Put the game's own recording back."
+                                                        Margin="{StaticResource ButtonGap}" Padding="{StaticResource ButtonPadding}"/>
+                                            </WrapPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="310" MinWidth="230"/>
+            <ColumnDefinition Width="10"/>
+            <ColumnDefinition Width="*" MinWidth="380"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- The 52 missions, grouped the way the game presents them. -->
+        <Border Grid.Column="0" Style="{StaticResource Card}" Padding="{StaticResource CardPadding}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Missions" Style="{StaticResource Heading}" Margin="{StaticResource GapBelow}"/>
+
+                <ListBox Grid.Row="1" x:Name="MissionList"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             VirtualizingPanel.ScrollUnit="Pixel" SelectionChanged="OnMissionSelected"
+                         HorizontalContentAlignment="Stretch"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="4,3"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+
+                            <!-- Right-clicking selects first, so the menu always acts on the
+                                 mission under the pointer rather than on whatever was
+                                 selected before. -->
+                            <EventSetter Event="PreviewMouseRightButtonDown"
+                                         Handler="OnMissionRightClick"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <StackPanel.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Reset this mission" Click="OnResetMission"
+                                                  IsEnabled="{Binding CanReset}"
+                                                  Visibility="{Binding IsMission,
+                                                      Converter={StaticResource BoolToVis}}"
+                                                  ToolTip="Puts this mission's map, briefing, text and scenario rule back the way the game shipped them."/>
+                                    </ContextMenu>
+                                </StackPanel.ContextMenu>
+
+                                <!-- A campaign reads as the heading it used to be, and is a
+                                     row like any other: one selection decides what the
+                                     right-hand side shows. -->
+                                <TextBlock Text="{Binding Title}"
+                                           Foreground="{DynamicResource Accent}"
+                                           FontWeight="SemiBold"
+                                           FontSize="{StaticResource SmallText}"
+                                           Margin="{StaticResource LabelAbove}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding IsCampaign,
+                                               Converter={StaticResource BoolToVis}}"/>
+                                <StackPanel Orientation="Horizontal"
+                                            ToolTip="{Binding Note}"
+                                            Visibility="{Binding IsMission,
+                                                Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding Marker}" Width="12"
+                                               FontFamily="Consolas"
+                                               Foreground="{DynamicResource Accent}"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <GridSplitter Grid.Column="1" Width="10" HorizontalAlignment="Stretch"
+                      Background="Transparent"/>
+
+        <Border Grid.Column="2" Style="{StaticResource Card}" Padding="{StaticResource CardPadding}">
+            <Grid>
+                <TextBlock x:Name="Placeholder" Style="{StaticResource Dim}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           TextAlignment="Center" TextWrapping="Wrap" Margin="{StaticResource EmptyStateInset}"
+                           Text="Select a mission to replace its map, briefing or speech."/>
+
+                <ScrollViewer x:Name="CampaignDetail" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock x:Name="CampaignTitle" Style="{StaticResource Heading}"/>
+                        <TextBlock x:Name="CampaignSubtitle" Style="{StaticResource Dim}"
+                                   FontSize="{StaticResource SmallText}" TextWrapping="Wrap"/>
+
+                        <!-- The game plays fourteen missions whatever a mod does, so where a
+                             mod stops replacing them is worth saying before someone finds
+                             out by playing. -->
+                        <TextBlock x:Name="CampaignCoverage" Style="{StaticResource Dim}"
+                                   FontSize="{StaticResource SmallText}" TextWrapping="Wrap"
+                                   Margin="{StaticResource BlockBelow}"/>
+
+                        <ui:BusyStrip x:Name="Busy" Margin="{StaticResource GapBelow}"/>
+
+                        <ItemsControl x:Name="CampaignArtList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}"
+                                            Margin="{StaticResource GapBelow}">
+                                        <StackPanel>
+                                            <DockPanel Margin="{StaticResource TightBelow}">
+                                                <Button DockPanel.Dock="Right"
+                                                        Content="Reset all of it"
+                                                        Click="OnResetCampaignArt"
+                                                        IsEnabled="{Binding CanReset}"
+                                                        Padding="{StaticResource ButtonPadding}"
+                                                        Visibility="{Binding HasTitle,
+                                                            Converter={StaticResource BoolToVis}}"
+                                                        ToolTip="Puts every picture in this act back, and its name with them."/>
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold"/>
+                                                    <TextBlock Text="{Binding Coverage}"
+                                                               Style="{StaticResource Dim}"
+                                                               FontSize="{StaticResource SmallText}"
+                                                               Visibility="{Binding HasCoverage,
+                                                                   Converter={StaticResource BoolToVis}}"/>
+                                                </StackPanel>
+                                            </DockPanel>
+
+                                            <!-- An act's name is lettered over its title card,
+                                                 so it belongs with the pictures rather than apart. -->
+                                            <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
+                                                     LostFocus="OnActTitleCommitted"
+                                                     Margin="{StaticResource GapBelow}"
+                                                     Visibility="{Binding HasTitle,
+                                                         Converter={StaticResource BoolToVis}}"/>
+
+                                            <ItemsControl ItemsSource="{Binding Slots}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Width="200" Margin="{StaticResource GapRight}">
+                                                            <Border Height="110"
+                                                                    BorderBrush="{DynamicResource Border}"
+                                                                    BorderThickness="{StaticResource Hairline}"
+                                                                    CornerRadius="{StaticResource Radius}"
+                                                                    Margin="{StaticResource TightBelow}">
+                                                                <Border.Style>
+                                                                    <Style TargetType="Border">
+                                                                        <Setter Property="Background"
+                                                                                Value="{DynamicResource BgDeep}"/>
+                                                                        <Style.Triggers>
+                                                                            <!-- Dark line art needs
+                                                                                 something to be dark
+                                                                                 against. -->
+                                                                            <DataTrigger Binding="{Binding WantsLightBacking}"
+                                                                                         Value="True">
+                                                                                <Setter Property="Background"
+                                                                                        Value="{DynamicResource ArtLight}"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Border.Style>
+                                                                <StackPanel Orientation="Horizontal"
+                                                                            HorizontalAlignment="Center">
+                                                                    <DockPanel LastChildFill="True">
+                                                                        <TextBlock Text="at rest"
+                                                                                   DockPanel.Dock="Bottom"
+                                                                                   HorizontalAlignment="Center"
+                                                                                   Style="{StaticResource Dim}"
+                                                                                   FontSize="{StaticResource SmallText}"
+                                                                                   Visibility="{Binding HasPair,
+                                                                                       Converter={StaticResource BoolToVis}}"/>
+                                                                        <Image Source="{Binding Thumbnail}" Stretch="Uniform"
+                                                                               Margin="{StaticResource Tight}"
+                                                                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                                    </DockPanel>
+                                                                    <DockPanel LastChildFill="True"
+                                                                               Visibility="{Binding HasPair,
+                                                                                   Converter={StaticResource BoolToVis}}">
+                                                                        <TextBlock Text="pointed at"
+                                                                                   DockPanel.Dock="Bottom"
+                                                                                   HorizontalAlignment="Center"
+                                                                                   Style="{StaticResource Dim}"
+                                                                                   FontSize="{StaticResource SmallText}"/>
+                                                                        <Image Source="{Binding HoveredThumbnail}" Stretch="Uniform"
+                                                                               Margin="{StaticResource Tight}"
+                                                                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                                    </DockPanel>
+                                                                </StackPanel>
+                                                            </Border>
+
+                                                            <TextBlock Text="{Binding Label}"
+                                                                       FontWeight="SemiBold"
+                                                                       TextWrapping="Wrap"
+                                                                       FontSize="{StaticResource SmallText}"/>
+                                                            <TextBlock Text="{Binding Shape}"
+                                                                       Style="{StaticResource Dim}"
+                                                                       FontSize="{StaticResource SmallText}"/>
+                                                            <TextBlock Text="{Binding State}"
+                                                                       Style="{StaticResource Dim}"
+                                                                       FontSize="{StaticResource SmallText}"
+                                                                       TextWrapping="Wrap"
+                                                                       Margin="{StaticResource TightBelow}"/>
+                                                            <TextBlock Text="{Binding Note}"
+                                                                       Style="{StaticResource Dim}"
+                                                                       FontSize="{StaticResource SmallText}"
+                                                                       TextWrapping="Wrap"
+                                                                       Margin="{StaticResource TightBelow}"
+                                                                       Visibility="{Binding HasNote,
+                                                                           Converter={StaticResource BoolToVis}}"/>
+
+                                                            <WrapPanel>
+                                                                <Button Content="Replace…"
+                                                                        Click="OnReplaceCampaignArt"
+                                                                        Padding="{StaticResource ButtonPadding}"
+                                                                        Margin="{StaticResource ButtonGap}"/>
+                                                                <Button Content="Export…"
+                                                                        Click="OnExportCampaignArt"
+                                                                        Padding="{StaticResource ButtonPadding}"
+                                                                        Margin="{StaticResource ButtonGap}"
+                                                                        ToolTip="RuneFoundry writes a pair as two files."/>
+                                                                <Button Content="Reset"
+                                                                        Click="OnResetSlot"
+                                                                        IsEnabled="{Binding Changed}"
+                                                                        Padding="{StaticResource ButtonPadding}"
+                                                                        Margin="{StaticResource ButtonGap}"/>
+                                                            </WrapPanel>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock x:Name="CampaignArtNote" Style="{StaticResource Dim}"
+                                   FontSize="{StaticResource SmallText}" TextWrapping="Wrap"
+                                   Margin="{StaticResource GapAbove}"/>
+
+                        <!-- What the game shows after the last mission is won. It is a
+                             briefing like any other, so it is edited like one. -->
+                        <StackPanel x:Name="EpiloguePanel" Margin="{StaticResource SectionAbove}">
+                            <TextBlock Text="Closing screen" Style="{StaticResource Heading}"/>
+                            <TextBlock x:Name="EpilogueNote" Style="{StaticResource Dim}"
+                                       TextWrapping="Wrap" FontSize="{StaticResource SmallText}"
+                                       Margin="{StaticResource GapBelow}"/>
+                            <ItemsControl x:Name="EpilogueList"
+                                          ItemTemplate="{StaticResource BriefingPage}"/>
+                        </StackPanel>
+
+                        <!-- How long an act's card stays is really the fanfare's length,
+                             so it sits with the movies rather than with the pictures. -->
+                        <local:ActTimingView x:Name="TimingPane"
+                                             Margin="{StaticResource SectionAbove}"/>
+
+                        <!-- What the campaign plays, under what it shows. -->
+                        <local:MediaListView x:Name="MoviesPane"
+                                             Margin="{StaticResource SectionAbove}"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer x:Name="Detail" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                    <StackPanel Margin="{StaticResource SectionRight}">
+
+                        <TextBlock x:Name="MissionTitle" FontWeight="SemiBold" FontSize="{StaticResource SubheadText}"/>
+                        <TextBlock x:Name="MissionSubtitle" Style="{StaticResource Dim}" Margin="{StaticResource SectionBelow}"/>
+
+                        <!-- The text -->
+                        <DockPanel LastChildFill="False">
+                            <TextBlock DockPanel.Dock="Left" Text="Text" Style="{StaticResource Heading}"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox DockPanel.Dock="Right" x:Name="LocaleBox" Width="150"
+                                      SelectionChanged="OnLocaleChanged" VerticalAlignment="Center"
+                                      ToolTip="This box sets the language you edit."/>
+                        </DockPanel>
+                        <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}" Margin="{StaticResource HeadingGap}">
+                            <StackPanel>
+                                <TextBlock x:Name="StringsState" Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}"
+                                           Margin="{StaticResource GapBelow}" TextWrapping="Wrap"/>
+
+                                <Label Content="Mission name"/>
+                                <TextBox x:Name="NameBox" TextChanged="OnTextEdited" LostFocus="OnTextLostFocus"
+                                         Margin="{StaticResource GapBelow}"/>
+
+                                <Label Content="Objectives (one per line, the game prefixes each with a dash)"/>
+                                <TextBox x:Name="ObjectivesBox" TextChanged="OnTextEdited" LostFocus="OnTextLostFocus"
+                                         AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64"
+                                         VerticalScrollBarVisibility="Auto"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- The briefing, page by page, each with its recording -->
+                        <TextBlock Text="Briefing" Style="{StaticResource Heading}"/>
+                        <ItemsControl x:Name="PageList" Margin="{StaticResource HeadingGap}"
+                                      ItemTemplate="{StaticResource BriefingPage}"/>
+
+                        <TextBlock x:Name="Hint" Style="{StaticResource Dim}" TextWrapping="Wrap"
+                                   Margin="{StaticResource SectionBelow}"
+                                   Text="Text saves as you type, into this mod's copy of the language file."/>
+
+                        <!-- The map -->
+                        <TextBlock Text="Map" Style="{StaticResource Heading}"/>
+                        <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}" Margin="{StaticResource HeadingGap}">
+                            <StackPanel>
+                                <TextBlock x:Name="MapPath" FontFamily="Consolas" FontSize="{StaticResource SmallText}"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="MapState" Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}"
+                                           Margin="{StaticResource RowInset}"/>
+                                <WrapPanel>
+                                    <Button Content="Replace…" Click="OnReplaceMap"
+                                            ToolTip="Use a .PUD map of your own."
+                                            Margin="{StaticResource ButtonGap}" Padding="{StaticResource ButtonPadding}"/>
+                                    <Button x:Name="MapResetButton" Content="Reset to game default"
+                                            Click="OnResetMap" Margin="{StaticResource ButtonGap}" Padding="{StaticResource ButtonPadding}"/>
+                                    <Button x:Name="MapCopyButton" Content="Copy into the mod and edit"
+                                            Click="OnCopyAndEditMap"
+                                            ToolTip="Copy the game's map into this project, then open it."
+                                            Margin="{StaticResource ButtonGap}" Padding="{StaticResource ButtonPadding}"/>
+                                    <Button x:Name="MapOpenButton" Content="Open" Click="OnOpenMap"
+                                            ToolTip="Open this mod's copy of the map in whatever program handles .PUD files."
+                                            Margin="{StaticResource ButtonGap}" Padding="{StaticResource ButtonPadding}"/>
+                                    <Button Content="Show in Explorer" Click="OnShowMap"
+                                            Margin="{StaticResource ButtonGap}" Padding="{StaticResource ButtonPadding}"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- How the mission is won -->
+                        <TextBlock Text="Scenario rules" Style="{StaticResource Heading}"/>
+                        <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}" Margin="{StaticResource HeadingGap}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}" Margin="{StaticResource GapBelow}"
+                                           TextWrapping="Wrap"
+                                           Text="Each campaign slot uses one of the game's scenario rules. Any mission can use any rule."/>
+
+                                <ComboBox x:Name="ObjectiveBox" SelectionChanged="OnObjectiveChanged"
+                                          MaxWidth="580" HorizontalAlignment="Left" MinWidth="440">
+                                    <!-- Three lines per row: how it is won, how it is lost,
+                                         and what it changes about the map before play.
+                                         The same template draws the closed box, so the two
+                                         detail lines collapse when there is no ComboBoxItem
+                                         above them — which is only true in the closed box. -->
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="{StaticResource InlineField}">
+                                                <TextBlock Text="{Binding Label}" TextWrapping="Wrap"/>
+
+                                                <ItemsControl x:Name="Detail" Margin="{StaticResource TightAbove}"
+                                                              ItemsSource="{Binding Details}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="–" FontSize="{StaticResource SmallText}"
+                                                                           Style="{StaticResource Dim}"
+                                                                           Margin="{StaticResource TightRight}"/>
+                                                                <TextBlock Text="{Binding}" FontSize="{StaticResource SmallText}"
+                                                                           Style="{StaticResource Dim}"
+                                                                           TextWrapping="Wrap" MaxWidth="430"/>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Value="{x:Null}"
+                                                             Binding="{Binding RelativeSource={RelativeSource
+                                                                 AncestorType=ComboBoxItem}}">
+                                                    <Setter TargetName="Detail" Property="Visibility"
+                                                            Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <!-- Only for the counter objectives; see CampaignObjectives. -->
+                                <StackPanel x:Name="DeliveryPanel" Visibility="Collapsed" Margin="{StaticResource GapAbove}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="How many must arrive" VerticalAlignment="Center"
+                                                   Margin="{StaticResource GapRight}"/>
+                                        <TextBox x:Name="DeliveryCount" Width="60"
+                                                 TextChanged="OnDeliveryChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="{StaticResource GapAbove}">
+                                        <TextBlock Text="…of which Heroes (odd numbers only)"
+                                                   VerticalAlignment="Center" Margin="{StaticResource GapRight}"/>
+                                        <TextBox x:Name="DeliveryHeroes" Width="60"
+                                                 TextChanged="OnDeliveryChanged"
+                                                 ToolTip="Heroes count towards the total."/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <TextBlock x:Name="ObjectiveAlso" Style="{StaticResource Dim}"
+                                           FontSize="{StaticResource SmallText}" TextWrapping="Wrap" Margin="{StaticResource GapAbove}"/>
+
+                                <TextBlock x:Name="ObjectiveNeeds" Style="{StaticResource Dim}"
+                                           FontSize="{StaticResource SmallText}" TextWrapping="Wrap" Margin="{StaticResource GapAbove}"/>
+
+                                <TextBlock x:Name="ObjectiveWarning" Style="{StaticResource Dim}"
+                                           FontSize="{StaticResource SmallText}" TextWrapping="Wrap" Margin="{StaticResource GapAbove}"
+                                           Foreground="{DynamicResource Bad}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- What the mission lets you build -->
+                        <TextBlock Text="Build restrictions" Style="{StaticResource Heading}"/>
+                        <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}" Margin="{StaticResource HeadingGap}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}" Margin="{StaticResource GapBelow}"
+                                           TextWrapping="Wrap"
+                                           Text="The game sets each mission's tech tree. Maps cannot change it."/>
+
+                                <TextBlock x:Name="TechState" TextWrapping="Wrap" Margin="{StaticResource GapBelow}"/>
+
+                                <CheckBox x:Name="TechFree" Click="OnTechFreeChanged"
+                                          Content="Override the campaign's default restrictions for this mission"/>
+
+                                <TextBlock Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}" Margin="{StaticResource GapAbove}"
+                                           TextWrapping="Wrap"
+                                           Text="Opens up the tech tree for this mission. Affects your side only."/>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

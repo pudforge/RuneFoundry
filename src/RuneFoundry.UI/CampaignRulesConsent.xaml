@@ -1,0 +1,69 @@
+<Window x:Class="RuneFoundry.UI.CampaignRulesConsent"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Before this mod changes the campaign"
+        SizeToContent="Height" Width="620" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}" Foreground="{DynamicResource Text}">
+
+    <StackPanel Margin="{StaticResource Block}">
+
+        <TextBlock Text="This mod changes campaign rules"
+                   FontSize="{StaticResource SubheadText}" FontWeight="SemiBold"
+                   Margin="{StaticResource GapBelow}"/>
+
+        <TextBlock TextWrapping="Wrap" Margin="{StaticResource GapBelow}"
+                   Text="A mission's victory condition is not in any file RuneFoundry can replace. It is a number inside the game's program file, and the game refuses to start if that file is edited. So to change it, RuneFoundry writes the number into the game's memory while it is running."/>
+
+        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                BorderThickness="{StaticResource Hairline}" CornerRadius="{StaticResource Radius}"
+                Padding="{StaticResource CardPadding}" Margin="{StaticResource GapBelow}">
+            <StackPanel>
+                <TextBlock Text="What you should know" FontWeight="SemiBold"
+                           Margin="{StaticResource TightBelow}"/>
+                <TextBlock TextWrapping="Wrap" Style="{StaticResource Dim}"
+                           Margin="{StaticResource TightBelow}"
+                           Text="• Warcraft II Remastered includes Blizzard's Warden anti-cheat. It starts with the game, in single-player too."/>
+                <TextBlock TextWrapping="Wrap" Style="{StaticResource Dim}"
+                           Margin="{StaticResource TightBelow}"
+                           Text="• The game signs in to Battle.net, so this happens while your account is connected."/>
+                <TextBlock TextWrapping="Wrap" Style="{StaticResource Dim}"
+                           Margin="{StaticResource TightBelow}"
+                           Text="• Modifying a running Blizzard game is against the end-user agreement. Nobody outside Blizzard can tell you what it does or does not detect, and that can change at any time."/>
+                <TextBlock TextWrapping="Wrap" Style="{StaticResource Dim}"
+                           Text="• The risk, whatever it is, lands on your Battle.net account."/>
+            </StackPanel>
+        </Border>
+
+        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                BorderThickness="{StaticResource Hairline}" CornerRadius="{StaticResource Radius}"
+                Padding="{StaticResource CardPadding}" Margin="{StaticResource GapBelow}">
+            <StackPanel>
+                <TextBlock Text="What RuneFoundry actually does" FontWeight="SemiBold"
+                           Margin="{StaticResource TightBelow}"/>
+                <TextBlock TextWrapping="Wrap" Style="{StaticResource Dim}"
+                           Margin="{StaticResource TightBelow}"
+                           Text="• Writes two-byte numbers into a table of campaign settings. No program code is changed, and nothing of RuneFoundry's is loaded into the game."/>
+                <TextBlock TextWrapping="Wrap" Style="{StaticResource Dim}"
+                           Margin="{StaticResource TightBelow}"
+                           Text="• Refuses to write at all unless the game is the exact build it knows, so a game update means the feature stops rather than writing somewhere unknown."/>
+                <TextBlock TextWrapping="Wrap" Style="{StaticResource Dim}"
+                           Text="• Nothing on disk is altered, and closing the game undoes it."/>
+            </StackPanel>
+        </Border>
+
+        <TextBlock TextWrapping="Wrap" Margin="{StaticResource GapBelow}"
+                   Text="Skips campaign rules only. Everything else still applies: art, sounds, units, maps and text."/>
+
+        <CheckBox x:Name="Remember" Content="Remember my choice and stop asking"
+                  Margin="{StaticResource GapBelow}"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Skip the campaign rules" Click="OnSkip" IsCancel="True"
+                    Padding="{StaticResource ButtonPadding}" Margin="{StaticResource GapRight}"/>
+            <Button Content="Change them anyway" Click="OnAllow" IsDefault="True"
+                    Style="{StaticResource PrimaryButton}"
+                    Padding="{StaticResource ButtonPadding}"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

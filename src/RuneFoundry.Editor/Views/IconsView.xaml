@@ -1,0 +1,147 @@
+<UserControl x:Class="RuneFoundry.Editor.Views.IconsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:RuneFoundry.UI;assembly=RuneFoundry.UI"
+             Background="{DynamicResource Bg}">
+
+    <UserControl.Resources>
+        <!-- A tile in the sheet: the picture, its number, and its name where we have one. -->
+        <Style x:Key="IconTile" TargetType="ListBoxItem">
+            <Setter Property="Margin" Value="0,0,6,6"/>
+            <Setter Property="Padding" Value="4"/>
+            <Setter Property="Background" Value="{DynamicResource PanelRaised}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                    <Setter Property="Background" Value="{DynamicResource Selection}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <DataTemplate x:Key="IconTemplate">
+            <StackPanel Width="88">
+                <Image Source="{Binding Picture}" Width="80" Height="66" Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                <TextBlock Text="{Binding Caption}" Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}"
+                           TextTrimming="CharacterEllipsis" TextAlignment="Center"
+                           Margin="{StaticResource TightAbove}" ToolTip="{Binding Tip}"/>
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid Margin="{StaticResource Block}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="12"/>
+            <ColumnDefinition Width="320"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Style="{StaticResource Card}" Padding="{StaticResource CardPadding}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Margin="{StaticResource GapBelow}">
+                    <TextBlock Text="Icons" Style="{StaticResource Heading}"/>
+                    <TextBlock x:Name="Summary" Style="{StaticResource Dim}" TextWrapping="Wrap"/>
+                    <ui:BusyStrip x:Name="Busy" Margin="{StaticResource GapAbove}"/>
+                </StackPanel>
+
+                <ListBox Grid.Row="1" x:Name="IconList" SelectionMode="Extended"
+                             PreviewMouseRightButtonDown="OnIconRightClick" SelectionChanged="OnIconSelected"
+                         MouseDoubleClick="OnIconDoubleClick"
+                         ItemContainerStyle="{StaticResource IconTile}"
+                         ItemTemplate="{StaticResource IconTemplate}"
+                         BorderThickness="{StaticResource NoBorder}" Background="Transparent"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling">
+                    <ListBox.ContextMenu>
+                        <ContextMenu Opened="OnIconMenuOpening">
+                            <MenuItem x:Name="IconSwapItem" Header="_Use another icon's art…"
+                                      Click="OnIconDoubleClick" InputGestureText="Double-click"/>
+                            <MenuItem x:Name="IconImportItem" Header="Replace with a _picture…"
+                                      Click="OnImportIcon"/>
+                            <MenuItem x:Name="IconMaskItem" Header="Replace team-colour _mask…"
+                                      Click="OnImportMask"
+                                      ToolTip="Greyscale: black is untinted, lighter takes more of the player's colour."/>
+                            <Separator/>
+                            <MenuItem x:Name="IconResetItem" Header="_Reset to game default"
+                                      Click="OnResetIcon"/>
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <ui:VirtualizingWrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <Border Grid.Column="2" Style="{StaticResource Card}" Padding="{StaticResource CardPadding}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0">
+                    <TextBlock x:Name="ChosenTitle" Style="{StaticResource Heading}"
+                               Text="Nothing selected"/>
+                    <TextBlock x:Name="ChosenNote" Style="{StaticResource Dim}" TextWrapping="Wrap"
+                               Margin="{StaticResource GapBelow}"/>
+
+                    <Border Background="{DynamicResource BgDeep}" BorderThickness="{StaticResource Hairline}"
+                            BorderBrush="{DynamicResource Border}" CornerRadius="{StaticResource Radius}"
+                            Padding="{StaticResource Gap}" HorizontalAlignment="Left" Margin="{StaticResource GapBelow}">
+                        <Image x:Name="ChosenPicture" Width="160" Height="132" Stretch="Uniform"
+                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Row="1">
+                    <TextBlock Text="Draw this icon with the art of" Style="{StaticResource Dim}"
+                               Margin="{StaticResource TightBelow}"/>
+                    <ComboBox x:Name="SourceBox" SelectionChanged="OnSourceChosen"
+                              Height="52" Padding="{StaticResource Tight}" MaxDropDownHeight="480">
+                        <ComboBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Width="470" Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ComboBox.ItemsPanel>
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <Image Source="{Binding Picture}" Width="52" Height="44"
+                                       Stretch="Uniform" Margin="{StaticResource NoBorder}" ToolTip="{Binding Caption}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+
+                    <WrapPanel Margin="{StaticResource GapAbove}">
+                        <Button x:Name="ImportButton" Content="Replace with a picture…"
+                            Click="OnImportIcon" Margin="{StaticResource GapBelow}"
+                            Padding="{StaticResource ButtonPadding}" HorizontalAlignment="Left"/>
+                    <Button x:Name="ExportButton" Content="Export PNG…"
+                            Click="OnExportIcon" Margin="{StaticResource ButtonGap}"
+                            Padding="{StaticResource ButtonPadding}"
+                            ToolTip="Save the selected icons as PNG files. Shift-click or Ctrl-click to take several."/>
+                    <Button x:Name="ResetButton" Content="Reset to game default"
+                                Click="OnResetIcon" Margin="{StaticResource ButtonGap}"/>
+                    </WrapPanel>
+
+                    <TextBlock x:Name="Hint" Style="{StaticResource Dim}" TextWrapping="Wrap"
+                               Margin="{StaticResource GapAbove}"
+                               Text="Points this portrait at other art. Covers all four tilesets."/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

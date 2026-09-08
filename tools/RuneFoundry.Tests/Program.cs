@@ -4262,6 +4262,216 @@ runner.Test("a value that cannot be read never satisfies a rule", () =>
         "an empty set is never met");
 });
 
+runner.Test("the engine arms on a mission and disarms when it ends", () =>
+{
+    var farm = CounterCatalog.Find("farm")!;
+    var rules = new Dictionary<int, ScenarioRules>
+    {
+        [6] = new(new ConditionSet(Match.All, new[]
+        {
+            new Condition(ConditionKind.OwnCount, Counter: "farm", Count: 4),
+        }), ConditionSet.Empty),
+    };
+
+    var game = new FakeSnapshot { MissionSlot = 6 };
+    var wins = new List<bool>();
+    var armed = new List<int>();
+    var disarmed = new List<string>();
+
+    var engine = new ScenarioEngine(rules, () => game);
+    engine.Armed += slot => armed.Add(slot);
+    engine.Disarmed += why => disarmed.Add(why);
+    engine.Fired += win => wins.Add(win);
+
+    engine.Poll();
+    Runner.AreEqual(ScenarioState.Armed, engine.State, "a mission with rules arms");
+    Runner.AreEqual(6, engine.ArmedSlot, "on its own slot");
+    Runner.AreEqual(1, armed.Count, "and says so once");
+
+    engine.Poll();
+    Runner.AreEqual(1, armed.Count, "and does not say so again every poll");
+
+    // Leaving the mission ends the episode.
+    game.GameState = 1;
+    engine.Poll();
+    Runner.AreEqual(ScenarioState.Watching, engine.State, "leaving the mission disarms");
+    Runner.AreEqual(1, disarmed.Count, "and says so");
+
+    game.GameState = 3;
+    engine.Poll();
+    Runner.AreEqual(ScenarioState.Armed, engine.State, "coming back arms again");
+    Runner.AreEqual(0, wins.Count, "and nothing has fired");
+});
+
+runner.Test("a rule has to hold twice before the engine acts", () =>
+{
+    var farm = CounterCatalog.Find("farm")!;
+    var rules = new Dictionary<int, ScenarioRules>
+    {
+        [6] = new(new ConditionSet(Match.All, new[]
+        {
+            new Condition(ConditionKind.OwnCount, Counter: "farm", Count: 4),
+        }), ConditionSet.Empty),
+    };
+
+    var game = new FakeSnapshot { MissionSlot = 6 };
+    var writes = new List<(uint Address, uint Value)>();
+    var fired = new List<bool>();
+
+    var engine = new ScenarioEngine(rules, () => game, (a, v) => writes.Add((a, v)));
+    engine.Fired += win => fired.Add(win);
+
+    engine.Poll();
+    Runner.AreEqual(0, writes.Count, "nothing yet");
+
+    // One poll where it holds is not enough: a single read can catch the game mid-update.
+    game.Set(farm.Total, 0, 4);
+    engine.Poll();
+    Runner.AreEqual(0, writes.Count, "one true poll does not fire");
+
+    engine.Poll();
+    Runner.AreEqual(1, writes.Count, "two consecutive ones do");
+    Runner.AreEqual(GameAddresses.VictoryFunction, writes[0].Address, "it writes the seam");
+    Runner.AreEqual(GameAddresses.WinTerminal, writes[0].Value, "with the game's own win routine");
+    Runner.AreEqual(true, fired[0], "and reports a win");
+
+    // Once per episode, however long the rule stays true.
+    engine.Poll();
+    engine.Poll();
+    Runner.AreEqual(1, writes.Count, "and never twice in one mission");
+
+    // A count that lapses between polls starts the run again.
+    var flicker = new FakeSnapshot { MissionSlot = 6 };
+    var second = new List<(uint, uint)>();
+    var engine2 = new ScenarioEngine(rules, () => flicker, (a, v) => second.Add((a, v)));
+
+    flicker.Set(farm.Total, 0, 4);
+    engine2.Poll();
+    flicker.Set(farm.Total, 0, 3);
+    engine2.Poll();
+    flicker.Set(farm.Total, 0, 4);
+    engine2.Poll();
+
+    Runner.AreEqual(0, second.Count, "a rule that lapses has to hold twice again");
+});
+
+runner.Test("defeat is read before victory", () =>
+{
+    // A mission that is both won and lost on the same tick was written badly, and losing
+    // is the safer reading.
+    var rules = new Dictionary<int, ScenarioRules>
+    {
+        [6] = new(
+            new ConditionSet(Match.All, new[] { new Condition(ConditionKind.Kills, Count: 1) }),
+            new ConditionSet(Match.All, new[] { new Condition(ConditionKind.Razings, Count: 1) })),
+    };
+
+    var game = new FakeSnapshot { MissionSlot = 6 }
+        .Set(GameAddresses.Kills, 0, 5)
+        .Set(GameAddresses.Razings, 0, 5);
+
+    var writes = new List<(uint Address, uint Value)>();
+    var engine = new ScenarioEngine(rules, () => game, (a, v) => writes.Add((a, v)));
+
+    engine.Poll();
+    engine.Poll();
+
+    Runner.AreEqual(1, writes.Count, "it fires once");
+    Runner.AreEqual(GameAddresses.LoseTerminal, writes[0].Value, "and the loss wins the tie");
+});
+
+runner.Test("the engine refuses everything it is not sure about", () =>
+{
+    var rules = new Dictionary<int, ScenarioRules>
+    {
+        [6] = new(new ConditionSet(Match.All, new[] { new Condition(ConditionKind.Kills, Count: 1) }),
+                  ConditionSet.Empty),
+    };
+
+    void Refuses(string what, Action<FakeSnapshot> break_)
+    {
+        var game = new FakeSnapshot { MissionSlot = 6 }.Set(GameAddresses.Kills, 0, 9);
+        break_(game);
+
+        var writes = new List<(uint, uint)>();
+        var engine = new ScenarioEngine(rules, () => game, (a, v) => writes.Add((a, v)));
+
+        engine.Poll();
+        engine.Poll();
+        engine.Poll();
+
+        Runner.AreEqual(0, writes.Count, what);
+        Runner.AreEqual(ScenarioState.Refused, engine.State, what + ": and says so");
+    }
+
+    Refuses("a skirmish is not watched", g => g.IsCustomGame = true);
+    Refuses("neither is anything outside the campaign", g => g.IsCampaign = false);
+    Refuses("nor a mission the game has already decided", g => g.IsResolved = true);
+    Refuses("nor one using the game's own rule", g => g.ObjectiveState = 0x0008);
+    Refuses("nor one whose pointer has moved", g => g.VictoryFunction = 0x00401000);
+    Refuses("nor one we cannot read the pointer of", g => g.VictoryFunction = null);
+
+    // A slot with no rules is watched, not armed, and never fires.
+    var other = new FakeSnapshot { MissionSlot = 7 }.Set(GameAddresses.Kills, 0, 9);
+    var quiet = new List<(uint, uint)>();
+    var idle = new ScenarioEngine(rules, () => other, (a, v) => quiet.Add((a, v)));
+
+    idle.Poll();
+    idle.Poll();
+    Runner.AreEqual(0, quiet.Count, "a mission with no rules of ours is left alone");
+});
+
+runner.Test("a new mission drops what the last one latched", () =>
+{
+    var rules = new Dictionary<int, ScenarioRules>
+    {
+        [6] = new(new ConditionSet(Match.All, new[] { new Condition(ConditionKind.Kills, Count: 1) }),
+                  ConditionSet.Empty),
+        [7] = new(new ConditionSet(Match.All, new[] { new Condition(ConditionKind.Kills, Count: 1) }),
+                  ConditionSet.Empty),
+    };
+
+    var game = new FakeSnapshot { MissionSlot = 6 }.Set(GameAddresses.Kills, 0, 4);
+    var writes = new List<(uint, uint)>();
+    var engine = new ScenarioEngine(rules, () => game, (a, v) => writes.Add((a, v)));
+
+    engine.Poll();
+    engine.Poll();
+    Runner.AreEqual(1, writes.Count, "the first mission fires");
+
+    // The next mission is a fresh episode, so it can fire again.
+    game.MissionSlot = 7;
+    engine.Poll();
+    engine.Poll();
+    Runner.AreEqual(2, writes.Count, "and so does the next one");
+});
+
+runner.Test("a crashed session is only resumed against the game it set up", () =>
+{
+    var mine = System.Diagnostics.Process.GetCurrentProcess();
+
+    var session = new ScenarioSession
+    {
+        Pid = mine.Id,
+        StartedUtc = mine.StartTime.ToUniversalTime(),
+        ModId = "test",
+        Slots = new List<int> { 6 },
+    };
+
+    Runner.IsTrue(ScenarioEngine.IsOurs(session, mine), "the pid and start time together identify it");
+
+    // A pid is reused within minutes of a process ending, so it cannot stand alone.
+    var reused = new ScenarioSession
+    {
+        Pid = mine.Id,
+        StartedUtc = mine.StartTime.ToUniversalTime().AddHours(-3),
+        ModId = "test",
+        Slots = new List<int> { 6 },
+    };
+
+    Runner.IsTrue(!ScenarioEngine.IsOurs(reused, mine), "a matching pid alone is not enough");
+});
+
 runner.Test("a sprite knows its seasonal twins", () =>
 {
     var game = GameInstall.Detect();

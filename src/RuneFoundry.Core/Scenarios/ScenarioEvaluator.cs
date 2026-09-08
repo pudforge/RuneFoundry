@@ -165,11 +165,18 @@ public static class ScenarioEvaluator
     {
         if (CounterCatalog.Find(condition.Counter) is not { } counter) return null;
 
-        // Finished-only where the game keeps a second tally, and the plain one where it
-        // does not: a counter with no ACTIVE table has nothing better to offer.
-        var array = condition.FinishedOnly && counter.Active is { } active ? active : counter.Total;
-
-        return game.Counter(array, player);
+        // Always the plain tally.
+        //
+        // The game keeps a second, ACTIVE table, and it does not mean "finished". It exists
+        // only for the combat types, so no building has one at all, and read against a live
+        // game it says zero while footmen are standing on the map. A rule asking for it
+        // could never be met, which is exactly the failure that is impossible to see from
+        // inside a mission.
+        //
+        // The cost is that a building counts from the moment its foundation is laid. The
+        // game offers nothing better, and counting one building early beats a rule that
+        // never fires.
+        return game.Counter(counter.Total, player);
     }
 
     private static bool Compare(int actual, Compare op, int wanted) => op switch

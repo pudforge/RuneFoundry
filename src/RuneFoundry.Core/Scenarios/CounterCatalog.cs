@@ -74,7 +74,11 @@ public static class CounterCatalog
         new Counter("portal", "Dark Portal", 0x0091B62C, null, new byte[] { 0x65 }) { IsBuilding = true },
         new Counter("runestone", "Runestone", 0x0091B64C, null, new byte[] { 0x66 }) { IsBuilding = true },
 
-        // --- units. ACTIVE exists only for the combat types. ---
+        // --- units. ACTIVE exists only for the combat types, and its order is not the
+        //     order of this list: grunt, archer, catapult, knight, destroyer, transport,
+        //     battleship, submarine, magus, flyer, sappers, dragon, on a 0x20 stride from
+        //     0x0091B86C. Two of them were transposed here, which read a submarine tally
+        //     for a mage. ---
         new Counter("peon", "Peasant / Peon", 0x0091B66C, null, new byte[] { 0x02, 0x03, 0x10, 0x11 }),
         new Counter("tanker", "Oil Tanker", 0x0091B68C, null, new byte[] { 0x1A, 0x1B }),
         new Counter("grunt", "Footman / Grunt", 0x0091B6EC, 0x0091B86C, new byte[] { 0x00, 0x01 }),
@@ -82,13 +86,13 @@ public static class CounterCatalog
         new Counter("ranger", "Ranger / Berserker", 0x0091B72C, null, new byte[] { 0x12, 0x13 }),
         new Counter("knight", "Knight / Ogre", 0x0091B74C, 0x0091B8CC, new byte[] { 0x06, 0x07, 0x0C, 0x0D }),
         new Counter("catapult", "Ballista / Catapult", 0x0091B76C, 0x0091B8AC, new byte[] { 0x04, 0x05 }),
-        new Counter("magus", "Mage / Death Knight", 0x0091B6CC, 0x0091B94C, new byte[] { 0x0A, 0x0B }),
+        new Counter("magus", "Mage / Death Knight", 0x0091B6CC, 0x0091B96C, new byte[] { 0x0A, 0x0B }),
         new Counter("magetower", "Mage Tower / Temple", 0x0091B4EC, null, new byte[] { 0x50, 0x51 }) { IsBuilding = true },
         new Counter("sappers", "Demo Squad / Sappers", 0x0091B84C, 0x0091B9AC, new byte[] { 0x0E, 0x0F }),
         new Counter("transport", "Transport", 0x0091B78C, 0x0091B90C, new byte[] { 0x1C, 0x1D }),
         new Counter("destroyer", "Destroyer", 0x0091B7AC, 0x0091B8EC, new byte[] { 0x1E, 0x1F }),
         new Counter("battleship", "Battleship / Juggernaut", 0x0091B7CC, 0x0091B92C, new byte[] { 0x20, 0x21 }),
-        new Counter("submarine", "Submarine / Turtle", 0x0091B7EC, 0x0091B96C, new byte[] { 0x26, 0x27 }),
+        new Counter("submarine", "Submarine / Turtle", 0x0091B7EC, 0x0091B94C, new byte[] { 0x26, 0x27 }),
         new Counter("flyer", "Flying Machine / Zeppelin", 0x0091B80C, 0x0091B98C, new byte[] { 0x28, 0x29 }),
         new Counter("dragon", "Gryphon / Dragon", 0x0091B82C, 0x0091B9CC, new byte[] { 0x2A, 0x2B }),
     };

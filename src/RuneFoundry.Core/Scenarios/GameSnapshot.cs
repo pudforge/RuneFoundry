@@ -57,7 +57,7 @@ public sealed class LiveSnapshot : IGameSnapshot
     public ushort? MissionSlot => _memory.Word(GameAddresses.MissionSlot);
     public byte? LocalPlayer => _memory.Byte(GameAddresses.LocalPlayer);
     public ushort? ObjectiveState => _memory.Word(GameAddresses.ObjectiveState);
-    public uint? VictoryFunction => _memory.Dword(GameAddresses.VictoryFunction);
+    public uint? VictoryFunction => _memory.CodePointer(GameAddresses.VictoryFunction);
 
     public bool? IsCampaign => _memory.Byte(GameAddresses.GameMode) is { } mode ? mode == 1 : null;
 

@@ -156,7 +156,7 @@ public sealed class ScenarioEngine : IDisposable
 
         var engine = new ScenarioEngine(rules,
             () => memory.IsRunning ? new LiveSnapshot(memory) : null,
-            (address, value) => memory.TryWritePointer(address, value))
+            (address, value) => memory.TryWriteCodePointer(address, value))
         {
             _memory = memory,
         };

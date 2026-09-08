@@ -4187,15 +4187,17 @@ runner.Test("every condition kind reads what it claims to", () =>
     Runner.AreEqual(false, ScenarioEvaluator.Evaluate(
         new Condition(ConditionKind.Resource, Counter: "gold", Count: 5000), scored, 0), "but not that much gold");
 
-    // Finished-only reads the other table where the game keeps one.
+    // The game's second tally is not "finished", so a rule counts what the player has.
+    // An old mod carrying FinishedOnly reads the same as one without it, rather than
+    // reading a tally that says zero while the units are on the map.
     var knight = CounterCatalog.Find("knight")!;
     var half = new FakeSnapshot().Set(knight.Total, 0, 3).Set(knight.Active!.Value, 0, 1);
 
     Runner.AreEqual(true, ScenarioEvaluator.Evaluate(
         new Condition(ConditionKind.OwnCount, Counter: "knight", Count: 3), half, 0), "3 owned");
-    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(
         new Condition(ConditionKind.OwnCount, Counter: "knight", Count: 3, FinishedOnly: true), half, 0),
-        "but only 1 finished");
+        "and an old rule asking for finished ones reads the same");
 });
 
 runner.Test("elimination matches the game's own arithmetic", () =>

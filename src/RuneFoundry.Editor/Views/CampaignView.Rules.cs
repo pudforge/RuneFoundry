@@ -133,9 +133,15 @@ public sealed class ConditionRow : Observable
 
     public bool NeedsHeroes => KindValue == ConditionKind.Delivered;
 
-    /// <summary>Only where the game keeps a second, finished-only tally.</summary>
-    public bool CanBeFinishedOnly =>
-        NeedsCounter && CounterCatalog.Find(Counter?.Value as string)?.Active is not null;
+    /// <summary>
+    /// Never offered.
+    ///
+    /// There was a "finished only" box here. The game's second tally does not mean that:
+    /// it covers the combat types alone, so no building has one, and it reads zero for
+    /// units that are plainly on the map. The field stays on the condition so an older mod
+    /// still loads, and nothing sets it any more.
+    /// </summary>
+    public bool CanBeFinishedOnly => false;
 
     /// <summary>The rule as a sentence, which is the only check most authors will read.</summary>
     public string Summary
@@ -154,7 +160,7 @@ public sealed class ConditionRow : Observable
             return KindValue switch
             {
                 ConditionKind.OwnCount =>
-                    $"When {who} own {how} {Count} {thing}{(FinishedOnly ? ", finished" : "")}.",
+                    $"When {who} own {how} {Count} {thing}.",
                 ConditionKind.EnemyHasNone => $"When no enemy has a {thing} left.",
                 ConditionKind.PlayerEliminated => $"When {who} have nothing left.",
                 ConditionKind.UnitAlive => $"While {who} still have a {thing}.",

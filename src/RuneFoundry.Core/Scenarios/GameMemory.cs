@@ -106,6 +106,22 @@ public sealed class GameMemory : IDisposable
     public uint? Dword(uint address) =>
         Bytes(address, 4) is { } b ? BitConverter.ToUInt32(b) : null;
 
+    /// <summary>
+    /// Reads a pointer to the game's own code, as an address in the executable rather than
+    /// in this run of it.
+    ///
+    /// Windows loads the image away from the base it was linked for, so a pointer stored in
+    /// memory is that much higher than the address in the file. Everything above this line
+    /// speaks in file addresses, because those are the ones the notes record and the tests
+    /// can assert on, so the slide is taken off here and put back on the way out.
+    /// </summary>
+    public uint? CodePointer(uint address) =>
+        Dword(address) is { } value ? (uint)(value - Slide) : null;
+
+    /// <summary>Writes a pointer to the game's own code, given its address in the executable.</summary>
+    public bool TryWriteCodePointer(uint address, uint target) =>
+        TryWritePointer(address, (uint)(target + Slide));
+
     /// <summary>One player's entry in a word[16] array.</summary>
     public ushort? Counter(uint array, int player) =>
         player < 0 || player >= GameAddresses.PlayerCount

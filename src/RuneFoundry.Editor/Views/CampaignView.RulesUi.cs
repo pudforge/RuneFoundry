@@ -19,6 +19,8 @@ public partial class CampaignView
 {
     private readonly List<ConditionRow> _victoryRows = new();
     private readonly List<ConditionRow> _defeatRows = new();
+    private readonly List<GroupRow> _victoryGroups = new();
+    private readonly List<GroupRow> _defeatGroups = new();
 
     /// <summary>Whether the author has chosen to write the rule themselves.</summary>
     private bool WritingOwnRule => RuleOfMyOwn?.IsChecked == true;
@@ -34,11 +36,26 @@ public partial class CampaignView
 
         _victoryRows.Clear();
         _defeatRows.Clear();
+        _victoryGroups.Clear();
+        _defeatGroups.Clear();
 
         if (rules is not null)
         {
             foreach (var condition in rules.Victory.Conditions) _victoryRows.Add(Track(ConditionRow.From(condition)));
             foreach (var condition in rules.Defeat.Conditions) _defeatRows.Add(Track(ConditionRow.From(condition)));
+
+            foreach (var group in rules.Victory.Nested) _victoryGroups.Add(TrackGroup(GroupRow.From(group, r => Track(r))));
+            foreach (var group in rules.Defeat.Nested) _defeatGroups.Add(TrackGroup(GroupRow.From(group, r => Track(r))));
+
+            VictoryAll.IsChecked = rules.Victory.Match == Match.All;
+            VictoryAny.IsChecked = rules.Victory.Match == Match.Any;
+            DefeatAll.IsChecked = rules.Defeat.Match == Match.All;
+            DefeatAny.IsChecked = rules.Defeat.Match == Match.Any;
+        }
+        else
+        {
+            VictoryAll.IsChecked = true;
+            DefeatAll.IsChecked = true;
         }
 
         // The mode follows what is stored rather than what was last clicked, so moving
@@ -58,6 +75,12 @@ public partial class CampaignView
         return row;
     }
 
+    private GroupRow TrackGroup(GroupRow group)
+    {
+        group.PropertyChanged += (_, _) => SaveRules();
+        return group;
+    }
+
     private void RefreshRuleLists()
     {
         VictoryList.ItemsSource = null;
@@ -65,6 +88,49 @@ public partial class CampaignView
 
         DefeatList.ItemsSource = null;
         DefeatList.ItemsSource = _defeatRows;
+
+        VictoryGroups.ItemsSource = null;
+        VictoryGroups.ItemsSource = _victoryGroups;
+
+        DefeatGroups.ItemsSource = null;
+        DefeatGroups.ItemsSource = _defeatGroups;
+    }
+
+    private void OnMatchChanged(object sender, RoutedEventArgs e) => SaveRules();
+
+    private void OnAddVictoryGroup(object sender, RoutedEventArgs e)
+    {
+        // Opens as "any", because a group whose parent is "all" is almost always the or.
+        _victoryGroups.Add(TrackGroup(new GroupRow { Match = Match.Any }));
+        RefreshRuleLists();
+        SaveRules();
+    }
+
+    private void OnAddDefeatGroup(object sender, RoutedEventArgs e)
+    {
+        _defeatGroups.Add(TrackGroup(new GroupRow { Match = Match.Any }));
+        RefreshRuleLists();
+        SaveRules();
+    }
+
+    private void OnAddToGroup(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not GroupRow group) return;
+
+        group.Rows.Add(Track(new ConditionRow()));
+        RefreshRuleLists();
+        SaveRules();
+    }
+
+    private void OnRemoveGroup(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not GroupRow group) return;
+
+        _victoryGroups.Remove(group);
+        _defeatGroups.Remove(group);
+
+        RefreshRuleLists();
+        SaveRules();
     }
 
     /// <summary>Shows the half of the card the chosen mode needs, and hides the other.</summary>
@@ -138,6 +204,8 @@ public partial class CampaignView
         _victoryRows.Remove(row);
         _defeatRows.Remove(row);
 
+        foreach (var group in _victoryGroups.Concat(_defeatGroups)) group.Rows.Remove(row);
+
         RefreshRuleLists();
         SaveRules();
     }
@@ -148,8 +216,14 @@ public partial class CampaignView
         if (_loading || _selected is null || _project is null || !WritingOwnRule) return;
 
         var rules = new ScenarioRules(
-            new ConditionSet(Match.All, _victoryRows.Select(r => r.ToCondition()).ToList()),
-            new ConditionSet(Match.All, _defeatRows.Select(r => r.ToCondition()).ToList()));
+            new ConditionSet(
+                VictoryAny.IsChecked == true ? Match.Any : Match.All,
+                _victoryRows.Select(r => r.ToCondition()).ToList(),
+                _victoryGroups.Select(g => g.ToSet()).ToList()),
+            new ConditionSet(
+                DefeatAny.IsChecked == true ? Match.Any : Match.All,
+                _defeatRows.Select(r => r.ToCondition()).ToList(),
+                _defeatGroups.Select(g => g.ToSet()).ToList()));
 
         _project.SetScenario(_selected.Mission.ExeSlot, rules);
 

@@ -49,7 +49,7 @@ public static class CounterCatalog
     public static readonly IReadOnlyList<Counter> All = new[]
     {
         // --- the two totals, which most rules want ---
-        new Counter("units", "Units alive", 0x0091B38C, null, None),
+        new Counter("units", "Any unit", 0x0091B38C, null, None),
         new Counter("buildings", "Buildings standing", 0x0091B3AC, null, None) { IsBuilding = true },
 
         // --- town tiers ---

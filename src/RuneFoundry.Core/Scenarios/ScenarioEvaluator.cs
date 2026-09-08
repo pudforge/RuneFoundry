@@ -46,6 +46,21 @@ public static class ScenarioEvaluator
             if (set.Match == Match.Any && met == true) return true;
         }
 
+        // A nested group answers like a condition would, and joins the same Match. An
+        // empty one is skipped rather than counted as false, so a group left half written
+        // does not quietly make an All set unsatisfiable.
+        foreach (var group in set.Nested)
+        {
+            if (group.IsEmpty) continue;
+
+            var met = Evaluate(group, game, localPlayer);
+
+            if (met is null) { unknown = true; continue; }
+
+            if (set.Match == Match.All && met == false) return false;
+            if (set.Match == Match.Any && met == true) return true;
+        }
+
         if (unknown) return null;
         return set.Match == Match.All;
     }
@@ -53,8 +68,32 @@ public static class ScenarioEvaluator
     /// <summary>Whether one condition holds.</summary>
     public static bool? Evaluate(Condition condition, IGameSnapshot game, int localPlayer)
     {
-        var met = Test(condition, game, localPlayer);
+        var met = condition.IsAnyPlayer
+            ? ForAnyone(condition, game, localPlayer)
+            : Test(condition, game, localPlayer);
+
         return met is null ? null : met.Value ^ condition.Invert;
+    }
+
+    /// <summary>
+    /// Whether the condition holds for at least one player.
+    ///
+    /// A player we could not read only matters when nobody else answered yes: if somebody
+    /// plainly satisfies it, what the unreadable one holds cannot change that.
+    /// </summary>
+    private static bool? ForAnyone(Condition condition, IGameSnapshot game, int localPlayer)
+    {
+        var unknown = false;
+
+        for (var player = 0; player < GameAddresses.PlayerCount; player++)
+        {
+            var met = Test(condition with { Player = player }, game, localPlayer);
+
+            if (met is null) { unknown = true; continue; }
+            if (met == true) return true;
+        }
+
+        return unknown ? null : false;
     }
 
     private static bool? Test(Condition condition, IGameSnapshot game, int localPlayer)

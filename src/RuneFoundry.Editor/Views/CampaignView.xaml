@@ -8,18 +8,54 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <local:FindingColourConverter x:Key="FindingColour"/>
 
+        <!-- A bracketed group: its own all/any, its own conditions, and a rule around it
+             that reads "this and (that or the other)". Indented and edged so the bracket
+             is visible without drawing one. -->
+        <DataTemplate x:Key="GroupBlock">
+            <Border BorderBrush="{DynamicResource Border}" BorderThickness="2,0,0,0"
+                    Margin="{StaticResource IndentTop}" Padding="{StaticResource CardPadding}">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TightBelow}">
+                        <TextBlock Text="(" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   Margin="{StaticResource TightRight}"/>
+                        <RadioButton Content="all of these" Style="{StaticResource ModeChip}"
+                                     IsChecked="{Binding IsAll, Mode=TwoWay}"/>
+                        <RadioButton Content="any of these" Style="{StaticResource ModeChip}"
+                                     Margin="{StaticResource TightLeft}"
+                                     IsChecked="{Binding IsAny, Mode=TwoWay}"/>
+                        <Button Content="Remove group" Click="OnRemoveGroup"
+                                Padding="{StaticResource SmallButtonPadding}"
+                                Margin="{StaticResource GapLeft}"/>
+                    </StackPanel>
+
+                    <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource ConditionRow}"/>
+
+                    <Button Content="Add a condition" Click="OnAddToGroup"
+                            HorizontalAlignment="Left"
+                            Padding="{StaticResource ButtonPadding}"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
         <!-- One condition. The kind picks what the rest of the row means, so the fields
              that do not apply are hidden by the row itself rather than greyed. -->
         <DataTemplate x:Key="ConditionRow">
             <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}"
                     Margin="{StaticResource TightBelow}">
                 <StackPanel>
+                    <!-- One line, read left to right as the sentence below says it:
+                         who, what test, what thing, how many. -->
                     <StackPanel Orientation="Horizontal">
-                        <ComboBox Width="190" ItemsSource="{Binding Kinds}" DisplayMemberPath="Label"
+                        <ComboBox Width="130" ItemsSource="{Binding Players}" DisplayMemberPath="Label"
+                                  SelectedItem="{Binding Player, Mode=TwoWay}"
+                                  Margin="{StaticResource GapRight}"
+                                  ToolTip="Whose things this counts."/>
+
+                        <ComboBox Width="180" ItemsSource="{Binding Kinds}" DisplayMemberPath="Label"
                                   SelectedItem="{Binding Kind, Mode=TwoWay}"
                                   Margin="{StaticResource GapRight}"/>
 
-                        <ComboBox Width="180" ItemsSource="{Binding Counters}" DisplayMemberPath="Label"
+                        <ComboBox Width="170" ItemsSource="{Binding Counters}" DisplayMemberPath="Label"
                                   SelectedItem="{Binding Counter, Mode=TwoWay}"
                                   Visibility="{Binding NeedsCounter, Converter={StaticResource BoolToVis}}"
                                   Margin="{StaticResource GapRight}"/>
@@ -33,28 +69,15 @@
                                  Visibility="{Binding NeedsCount, Converter={StaticResource BoolToVis}}"
                                  Margin="{StaticResource GapRight}"/>
 
-                        <Button Content="Remove" Click="OnRemoveCondition"
-                                Padding="{StaticResource SmallButtonPadding}"
-                                HorizontalAlignment="Right"/>
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TightAbove}">
-                        <TextBlock Text="Player" VerticalAlignment="Center"
-                                   Margin="{StaticResource GapRight}"/>
-                        <ComboBox Width="120" ItemsSource="{Binding Players}" DisplayMemberPath="Label"
-                                  SelectedItem="{Binding Player, Mode=TwoWay}"
-                                  Margin="{StaticResource GapRight}"/>
-
-                        <CheckBox Content="Finished only" IsChecked="{Binding FinishedOnly, Mode=TwoWay}"
-                                  VerticalAlignment="Center" Margin="{StaticResource GapRight}"
-                                  Visibility="{Binding CanBeFinishedOnly, Converter={StaticResource BoolToVis}}"
-                                  ToolTip="Count only what is built, not what is under construction."/>
-
                         <TextBlock Text="of which heroes" VerticalAlignment="Center"
                                    Visibility="{Binding NeedsHeroes, Converter={StaticResource BoolToVis}}"
                                    Margin="{StaticResource GapRight}"/>
                         <TextBox Width="48" Text="{Binding Heroes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 Visibility="{Binding NeedsHeroes, Converter={StaticResource BoolToVis}}"/>
+                                 Visibility="{Binding NeedsHeroes, Converter={StaticResource BoolToVis}}"
+                                 Margin="{StaticResource GapRight}"/>
+
+                        <Button Content="Remove" Click="OnRemoveCondition"
+                                Padding="{StaticResource SmallButtonPadding}"/>
                     </StackPanel>
 
                     <TextBlock Text="{Binding Summary}" Style="{StaticResource Dim}"
@@ -561,24 +584,54 @@
                                      won by one set of things and lost by another, and the
                                      two are edited apart. -->
                                 <StackPanel x:Name="OwnRulesPanel" Visibility="Collapsed">
-                                    <TextBlock Text="Won when" FontWeight="SemiBold"
-                                               Margin="{StaticResource GapBelow}"/>
+                                    <StackPanel Orientation="Horizontal" Margin="{StaticResource GapBelow}">
+                                        <TextBlock Text="Won when" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="{StaticResource GapRight}"/>
+                                        <RadioButton x:Name="VictoryAll" Content="all of these"
+                                                     GroupName="VictoryMatch" Style="{StaticResource ModeChip}"
+                                                     IsChecked="True" Checked="OnMatchChanged"/>
+                                        <RadioButton x:Name="VictoryAny" Content="any of these"
+                                                     GroupName="VictoryMatch" Style="{StaticResource ModeChip}"
+                                                     Margin="{StaticResource TightLeft}" Checked="OnMatchChanged"/>
+                                    </StackPanel>
+
                                     <ItemsControl x:Name="VictoryList" ItemTemplate="{StaticResource ConditionRow}"/>
-                                    <Button Content="Add a condition" Click="OnAddVictory"
-                                            HorizontalAlignment="Left"
-                                            Padding="{StaticResource ButtonPadding}"
-                                            Margin="{StaticResource TightBelow}"/>
+                                    <ItemsControl x:Name="VictoryGroups" ItemTemplate="{StaticResource GroupBlock}"/>
+
+                                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TightBelow}">
+                                        <Button Content="Add a condition" Click="OnAddVictory"
+                                                Padding="{StaticResource ButtonPadding}"/>
+                                        <Button Content="Add a group" Click="OnAddVictoryGroup"
+                                                Padding="{StaticResource ButtonPadding}"
+                                                Margin="{StaticResource TightLeft}"
+                                                ToolTip="A bracketed set with its own all or any, for rules like this and (that or the other)."/>
+                                    </StackPanel>
 
                                     <TextBlock Text="Lost when" FontWeight="SemiBold"
                                                Margin="{StaticResource SectionAbove}"/>
                                     <TextBlock Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}"
                                                TextWrapping="Wrap" Margin="{StaticResource TightBelow}"
                                                Text="Leave this empty to keep the game's own defeat rule, which ends the mission when you have nothing left."/>
+                                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TightBelow}">
+                                        <RadioButton x:Name="DefeatAll" Content="all of these"
+                                                     GroupName="DefeatMatch" Style="{StaticResource ModeChip}"
+                                                     IsChecked="True" Checked="OnMatchChanged"/>
+                                        <RadioButton x:Name="DefeatAny" Content="any of these"
+                                                     GroupName="DefeatMatch" Style="{StaticResource ModeChip}"
+                                                     Margin="{StaticResource TightLeft}" Checked="OnMatchChanged"/>
+                                    </StackPanel>
+
                                     <ItemsControl x:Name="DefeatList" ItemTemplate="{StaticResource ConditionRow}"/>
-                                    <Button Content="Add a condition" Click="OnAddDefeat"
-                                            HorizontalAlignment="Left"
-                                            Padding="{StaticResource ButtonPadding}"
-                                            Margin="{StaticResource TightBelow}"/>
+                                    <ItemsControl x:Name="DefeatGroups" ItemTemplate="{StaticResource GroupBlock}"/>
+
+                                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TightBelow}">
+                                        <Button Content="Add a condition" Click="OnAddDefeat"
+                                                Padding="{StaticResource ButtonPadding}"/>
+                                        <Button Content="Add a group" Click="OnAddDefeatGroup"
+                                                Padding="{StaticResource ButtonPadding}"
+                                                Margin="{StaticResource TightLeft}"/>
+                                    </StackPanel>
 
                                     <TextBlock Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}"
                                                TextWrapping="Wrap" Margin="{StaticResource SectionAbove}"

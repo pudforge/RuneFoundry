@@ -39,9 +39,19 @@ public sealed class ConditionRow : Observable
     public static readonly IReadOnlyList<Compare> AllComparisons =
         new[] { Compare.AtLeast, Compare.AtMost, Compare.Exactly };
 
-    /// <summary>The player slots, with the one at the keyboard first because it is the usual answer.</summary>
+    /// <summary>
+    /// Whose things a condition counts.
+    ///
+    /// The player at the keyboard comes first because it is the usual answer, and "anyone"
+    /// second because it is the next most useful: "anyone has four farms" is a race, and
+    /// naming the slot means knowing which slot the map gave the opponent.
+    /// </summary>
     public static readonly IReadOnlyList<RuleChoice> AllPlayers =
-        new[] { new RuleChoice("You", (object?)null) }
+        new[]
+            {
+                new RuleChoice("You", (object?)null),
+                new RuleChoice("Any player", RuneFoundry.Core.Scenarios.Condition.AnyPlayer),
+            }
             .Concat(Enumerable.Range(0, GameAddresses.PlayerCount)
                 .Select(i => new RuleChoice($"Player {i}", (object?)i)))
             .ToList();
@@ -148,7 +158,12 @@ public sealed class ConditionRow : Observable
     {
         get
         {
-            var who = Player.Value is int p ? $"player {p}" : "you";
+            var who = Player.Value switch
+            {
+                RuneFoundry.Core.Scenarios.Condition.AnyPlayer => "anyone",
+                int p => $"player {p}",
+                _ => "you",
+            };
             var thing = CounterCatalog.Describe(Counter?.Value as string).ToLowerInvariant();
             var how = Op switch
             {
@@ -160,10 +175,10 @@ public sealed class ConditionRow : Observable
             return KindValue switch
             {
                 ConditionKind.OwnCount =>
-                    $"When {who} own {how} {Count} {thing}.",
+                    $"When {who} {(Player.Value is null ? "own" : "owns")} {how} {Count} {thing}.",
                 ConditionKind.EnemyHasNone => $"When no enemy has a {thing} left.",
-                ConditionKind.PlayerEliminated => $"When {who} have nothing left.",
-                ConditionKind.UnitAlive => $"While {who} still have a {thing}.",
+                ConditionKind.PlayerEliminated => $"When {who} {(Player.Value is null ? "have" : "has")} nothing left.",
+                ConditionKind.UnitAlive => $"While {who} still {(Player.Value is null ? "have" : "has")} a {thing}.",
                 ConditionKind.Delivered => Heroes > 0
                     ? $"When {who} bring {how} {Count} to the Circle, {Heroes} of them heroes."
                     : $"When {who} bring {how} {Count} to the Circle.",
@@ -201,6 +216,57 @@ public sealed class ConditionRow : Observable
                        ?? row.Counters.FirstOrDefault();
 
         return row;
+    }
+}
+
+/// <summary>
+/// A bracketed set of conditions, with its own all-or-any.
+///
+/// One level of nesting is offered, which is what "this and (that or the other)" needs. A
+/// group inside a group is expressible in the file and simply is not drawn: the shapes
+/// people actually write stop at one bracket, and a tree editor is a great deal of UI for
+/// the second one.
+/// </summary>
+public sealed class GroupRow : Observable
+{
+    public List<ConditionRow> Rows { get; } = new();
+
+    private Match _match = Match.Any;
+
+    public Match Match
+    {
+        get => _match;
+        set { if (Set(ref _match, value)) { Raise(nameof(IsAll)); Raise(nameof(IsAny)); } }
+    }
+
+    // Two booleans rather than one, because a pair of radio buttons binds to two.
+    public bool IsAll
+    {
+        get => Match == Match.All;
+        set { if (value) Match = Match.All; }
+    }
+
+    public bool IsAny
+    {
+        get => Match == Match.Any;
+        set { if (value) Match = Match.Any; }
+    }
+
+    public ConditionSet ToSet() =>
+        new(Match, Rows.Select(r => r.ToCondition()).ToList());
+
+    public static GroupRow From(ConditionSet set, Action<ConditionRow> track)
+    {
+        var group = new GroupRow { Match = set.Match };
+
+        foreach (var condition in set.Conditions)
+        {
+            var row = ConditionRow.From(condition);
+            track(row);
+            group.Rows.Add(row);
+        }
+
+        return group;
     }
 }
 

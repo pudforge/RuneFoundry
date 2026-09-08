@@ -63,7 +63,8 @@ public enum Compare
 /// </summary>
 /// <param name="Player">
 /// Whose things to count. Null means the player at the keyboard, which is what an author
-/// means nine times in ten.
+/// means nine times in ten. <see cref="Condition.AnyPlayer"/> means the condition holds as
+/// soon as it holds for somebody.
 /// </param>
 /// <param name="Counter">A name from <see cref="CounterCatalog"/>.</param>
 /// <param name="Heroes">For <see cref="ConditionKind.Delivered"/>: how many must be heroes.</param>
@@ -86,16 +87,52 @@ public sealed record Condition(
     int Heroes = 0,
     bool FinishedOnly = false,
     bool Invert = false,
-    bool Latch = false);
+    bool Latch = false)
+{
+    /// <summary>
+    /// Stands for "whichever player", in <see cref="Player"/>.
+    ///
+    /// A negative number because the game's slots are 0 to 15, so it can never collide with
+    /// a real one, and it survives JSON without a second field to say which kind of answer
+    /// the first field is.
+    /// </summary>
+    public const int AnyPlayer = -1;
 
-/// <summary>A group of conditions and how they combine.</summary>
-public sealed record ConditionSet(Match Match, IReadOnlyList<Condition> Conditions)
+    /// <summary>Whether this condition asks about everybody rather than one player.</summary>
+    public bool IsAnyPlayer => Player == AnyPlayer;
+}
+
+/// <summary>
+/// A group of conditions, and groups of those, and how they combine.
+///
+/// The nesting is what lets a rule say "O1 and (O2 or O3)": the outer set is All over one
+/// condition and one group, and the group is Any over two. One <see cref="Match"/> covers
+/// everything in a set, its own conditions and its groups alike, which is the shape a
+/// person draws when they bracket something.
+///
+/// <para>
+/// <see cref="Groups"/> defaults to empty, so every rule written before nesting existed
+/// still reads as exactly what it was.
+/// </para>
+/// </summary>
+public sealed record ConditionSet(
+    Match Match,
+    IReadOnlyList<Condition> Conditions,
+    IReadOnlyList<ConditionSet>? Groups = null)
 {
     public static ConditionSet Empty { get; } = new(Match.All, Array.Empty<Condition>());
 
+    /// <summary>The nested groups, never null.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<ConditionSet> Nested => Groups ?? Array.Empty<ConditionSet>();
+
     /// <summary>An empty set asks nothing, so it can never be met.</summary>
     [JsonIgnore]
-    public bool IsEmpty => Conditions.Count == 0;
+    public bool IsEmpty => Conditions.Count == 0 && Nested.All(g => g.IsEmpty);
+
+    /// <summary>Every condition in here and in everything under it.</summary>
+    public IEnumerable<Condition> Flatten() =>
+        Conditions.Concat(Nested.SelectMany(g => g.Flatten()));
 }
 
 /// <summary>

@@ -4505,6 +4505,109 @@ runner.Test("a mod made only of rules still builds", () =>
         "with its counter intact");
 });
 
+runner.Test("a rule can ask about anyone rather than one player", () =>
+{
+    var farm = CounterCatalog.Find("farm")!;
+    var anyone = new Condition(ConditionKind.OwnCount, Player: Condition.AnyPlayer,
+                               Counter: "farm", Count: 4);
+
+    // Nobody has four.
+    var few = new FakeSnapshot().Set(farm.Total, 0, 1).Set(farm.Total, 3, 2);
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(anyone, few, 0), "nobody qualifies");
+
+    // Somebody does, and it need not be us.
+    var one = new FakeSnapshot().Set(farm.Total, 5, 4);
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(anyone, one, 0), "player 5 qualifies");
+
+    // Ours counts too.
+    var mine = new FakeSnapshot().Set(farm.Total, 0, 4);
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(anyone, mine, 0), "and so do we");
+
+    // A player we cannot read leaves it unknown, unless somebody else already said yes.
+    var blind = new FakeSnapshot().Unreadable(farm.Total, 7);
+    Runner.AreEqual(null, ScenarioEvaluator.Evaluate(anyone, blind, 0),
+        "one unreadable player and no yes is unknown");
+
+    var yesAndBlind = new FakeSnapshot().Set(farm.Total, 2, 9).Unreadable(farm.Total, 7);
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(anyone, yesAndBlind, 0),
+        "a plain yes settles it regardless");
+
+    // It survives the project file, because it is just a number in the same field.
+    using var sandbox = new Sandbox();
+    var project = sandbox.CreateProject("anyone", "Anyone");
+    project.SetScenario(4, new ScenarioRules(
+        new ConditionSet(Match.All, new[] { anyone }), ConditionSet.Empty));
+
+    var back = ModProject.Load(project.ProjectPath).ScenarioFor(4)!;
+    Runner.IsTrue(back.Victory.Conditions[0].IsAnyPlayer, "and it reads back as anyone");
+
+    // The validator does not mistake the sentinel for a bad slot number.
+    var findings = ScenarioValidator.Validate(
+        new ScenarioRules(new ConditionSet(Match.All, new[] { anyone }), ConditionSet.Empty), null);
+
+    Runner.IsTrue(!findings.Any(f => f.Message.Contains("names player", StringComparison.Ordinal)),
+        "and is not called an out-of-range player");
+});
+
+runner.Test("a rule can bracket a group: O1 and (O2 or O3)", () =>
+{
+    var farm = CounterCatalog.Find("farm")!;
+    var barracks = CounterCatalog.Find("barracks")!;
+    var shipyard = CounterCatalog.Find("shipyard")!;
+
+    var o1 = new Condition(ConditionKind.OwnCount, Counter: "farm", Count: 1);
+    var o2 = new Condition(ConditionKind.OwnCount, Counter: "barracks", Count: 1);
+    var o3 = new Condition(ConditionKind.OwnCount, Counter: "shipyard", Count: 1);
+
+    var rule = new ConditionSet(Match.All, new[] { o1 },
+        new[] { new ConditionSet(Match.Any, new[] { o2, o3 }) });
+
+    // The farm alone is not enough: the bracket still has to answer.
+    var farmOnly = new FakeSnapshot().Set(farm.Total, 0, 1);
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(rule, farmOnly, 0), "O1 alone is not enough");
+
+    // Either side of the or will do.
+    var withBarracks = new FakeSnapshot().Set(farm.Total, 0, 1).Set(barracks.Total, 0, 1);
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(rule, withBarracks, 0), "O1 and O2");
+
+    var withShipyard = new FakeSnapshot().Set(farm.Total, 0, 1).Set(shipyard.Total, 0, 1);
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(rule, withShipyard, 0), "O1 and O3");
+
+    // And the outer and still binds.
+    var bracketOnly = new FakeSnapshot().Set(barracks.Total, 0, 1);
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(rule, bracketOnly, 0), "the bracket alone is not enough");
+
+    // An unreadable value inside the bracket makes the bracket unknown, not false.
+    var blind = new FakeSnapshot().Set(farm.Total, 0, 1)
+        .Unreadable(barracks.Total, 0)
+        .Unreadable(shipyard.Total, 0);
+    Runner.AreEqual(null, ScenarioEvaluator.Evaluate(rule, blind, 0), "unknown inside the bracket");
+
+    // A group left empty is skipped rather than making the whole rule unsatisfiable.
+    var halfWritten = new ConditionSet(Match.All, new[] { o1 },
+        new[] { new ConditionSet(Match.Any, Array.Empty<Condition>()) });
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(halfWritten, farmOnly, 0),
+        "an empty group does not block the rule");
+
+    // Through the project file and out again.
+    using var sandbox = new Sandbox();
+    var project = sandbox.CreateProject("bracket", "Bracket");
+    project.SetScenario(2, new ScenarioRules(rule, ConditionSet.Empty));
+
+    var back = ModProject.Load(project.ProjectPath).ScenarioFor(2)!;
+
+    Runner.AreEqual(1, back.Victory.Conditions.Count, "the outer condition survives");
+    Runner.AreEqual(1, back.Victory.Nested.Count, "and the group with it");
+    Runner.AreEqual(Match.Any, back.Victory.Nested[0].Match, "keeping its own match");
+    Runner.AreEqual(2, back.Victory.Nested[0].Conditions.Count, "and both of its conditions");
+    Runner.AreEqual(3, back.Victory.Flatten().Count(), "three conditions in all");
+
+    // A rule written before groups existed still reads as exactly what it was.
+    var old = new ConditionSet(Match.All, new[] { o1 });
+    Runner.AreEqual(0, old.Nested.Count, "no groups means no groups");
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(old, farmOnly, 0), "and it still evaluates");
+});
+
 runner.Test("a sprite knows its seasonal twins", () =>
 {
     var game = GameInstall.Detect();

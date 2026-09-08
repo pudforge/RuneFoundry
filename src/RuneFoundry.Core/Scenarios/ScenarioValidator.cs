@@ -63,14 +63,22 @@ public static class ScenarioValidator
         for (var i = 0; i < set.Conditions.Count; i++)
         {
             var condition = set.Conditions[i];
-            var where = set.Conditions.Count == 1 ? $"The {what} rule" : $"{what} rule {i + 1}";
+            var where = set.Conditions.Count == 1 && set.Nested.Count == 0
+                ? $"The {what} rule"
+                : $"{what} rule {i + 1}";
 
             foreach (var finding in CheckOne(condition, map, localPlayer, where))
                 findings.Add(finding);
         }
 
-        // Every condition met at the start means the mission ends on its first tick.
-        if (map is not null && !set.IsEmpty && set.Match == Match.All
+        // Each group is checked as itself, so a fault inside brackets is reported where it
+        // is rather than attributed to the rule around it.
+        for (var i = 0; i < set.Nested.Count; i++)
+            Check(findings, set.Nested[i], map, localPlayer, $"{what} group {i + 1}");
+
+        // Every condition met at the start means the mission ends on its first tick. Only
+        // asked at the top, because a group being true at the start is ordinary.
+        if (map is not null && !set.IsEmpty && set.Match == Match.All && set.Nested.Count == 0
             && set.Conditions.All(c => MetAtStart(c, map, localPlayer) == true))
         {
             findings.Add(new Finding(FindingLevel.Problem,
@@ -104,7 +112,8 @@ public static class ScenarioValidator
             yield return new Finding(FindingLevel.Problem,
                 $"{where} wants {condition.Heroes} heroes among {condition.Count} delivered.");
 
-        if (condition.Player is { } player && (player < 0 || player > NeutralPlayer))
+        if (condition.Player is { } player && !condition.IsAnyPlayer
+            && (player < 0 || player > NeutralPlayer))
             yield return new Finding(FindingLevel.Problem,
                 $"{where} names player {player}. The game has 0 to {NeutralPlayer}.");
 

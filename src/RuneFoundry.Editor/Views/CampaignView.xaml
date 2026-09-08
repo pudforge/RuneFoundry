@@ -8,35 +8,6 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <local:FindingColourConverter x:Key="FindingColour"/>
 
-        <!-- A bracketed group: its own all/any, its own conditions, and a rule around it
-             that reads "this and (that or the other)". Indented and edged so the bracket
-             is visible without drawing one. -->
-        <DataTemplate x:Key="GroupBlock">
-            <Border BorderBrush="{DynamicResource Border}" BorderThickness="2,0,0,0"
-                    Margin="{StaticResource IndentTop}" Padding="{StaticResource CardPadding}">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TightBelow}">
-                        <TextBlock Text="(" FontWeight="SemiBold" VerticalAlignment="Center"
-                                   Margin="{StaticResource TightRight}"/>
-                        <RadioButton Content="all of these" Style="{StaticResource ModeChip}"
-                                     IsChecked="{Binding IsAll, Mode=TwoWay}"/>
-                        <RadioButton Content="any of these" Style="{StaticResource ModeChip}"
-                                     Margin="{StaticResource TightLeft}"
-                                     IsChecked="{Binding IsAny, Mode=TwoWay}"/>
-                        <Button Content="Remove group" Click="OnRemoveGroup"
-                                Padding="{StaticResource SmallButtonPadding}"
-                                Margin="{StaticResource GapLeft}"/>
-                    </StackPanel>
-
-                    <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource ConditionRow}"/>
-
-                    <Button Content="Add a condition" Click="OnAddToGroup"
-                            HorizontalAlignment="Left"
-                            Padding="{StaticResource ButtonPadding}"/>
-                </StackPanel>
-            </Border>
-        </DataTemplate>
-
         <!-- One condition. The kind picks what the rest of the row means, so the fields
              that do not apply are hidden by the row itself rather than greyed. -->
         <DataTemplate x:Key="ConditionRow">
@@ -86,6 +57,40 @@
                 </StackPanel>
             </Border>
         </DataTemplate>
+
+        <!-- After ConditionRow on purpose: a StaticResource is resolved as the dictionary
+             is read, so a template that names one defined further down throws when it is
+             first instantiated. That is at the moment somebody adds a group, not at
+             startup, which is the worst place for it to happen. -->
+        <!-- A bracketed group: its own all/any, its own conditions, and a rule around it
+             that reads "this and (that or the other)". Indented and edged so the bracket
+             is visible without drawing one. -->
+        <DataTemplate x:Key="GroupBlock">
+            <Border BorderBrush="{DynamicResource Border}" BorderThickness="2,0,0,0"
+                    Margin="{StaticResource IndentTop}" Padding="{StaticResource CardPadding}">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TightBelow}">
+                        <TextBlock Text="(" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   Margin="{StaticResource TightRight}"/>
+                        <RadioButton Content="all of these" Style="{StaticResource ModeChip}"
+                                     IsChecked="{Binding IsAll, Mode=TwoWay}"/>
+                        <RadioButton Content="any of these" Style="{StaticResource ModeChip}"
+                                     Margin="{StaticResource TightLeft}"
+                                     IsChecked="{Binding IsAny, Mode=TwoWay}"/>
+                        <Button Content="Remove group" Click="OnRemoveGroup"
+                                Padding="{StaticResource SmallButtonPadding}"
+                                Margin="{StaticResource GapLeft}"/>
+                    </StackPanel>
+
+                    <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource ConditionRow}"/>
+
+                    <Button Content="Add a condition" Click="OnAddToGroup"
+                            HorizontalAlignment="Left"
+                            Padding="{StaticResource ButtonPadding}"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
 
         <!-- One template, two lists: a mission's briefing pages and the
              campaign's closing screen are the same thing to edit. -->

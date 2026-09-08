@@ -901,6 +901,64 @@ internal static class Program
         Check("adding a condition draws one", added.Rows == 1, $"{added.Rows} rows");
         Check("and the condition offers its choices", boxes >= 2, $"{boxes} filled dropdowns");
 
+        // Adding a group instantiates its template for the first time, which is where a
+        // forward StaticResource reference blows up: at the click, not at startup.
+        var grouped = On(() =>
+        {
+            var button = Descendants(view.FindName("OwnRulesPanel") as DependencyObject)
+                .OfType<Button>()
+                .FirstOrDefault(b => b.Content as string == "Add a group");
+
+            if (button is null) return (Found: false, Threw: "", Groups: 0);
+
+            // A project may already carry groups, so what matters is that one more appears.
+            var before = Items(view.FindName("VictoryGroups") as ItemsControl).Count;
+
+            try
+            {
+                button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            }
+            catch (Exception ex)
+            {
+                return (Found: true, Threw: ex.GetType().Name + ": " + ex.Message, Groups: 0);
+            }
+
+            return (Found: true, Threw: "",
+                    Groups: Items(view.FindName("VictoryGroups") as ItemsControl).Count - before);
+        });
+
+        Check("a rule can be given a bracketed group",
+            grouped.Found && grouped.Threw.Length == 0 && grouped.Groups == 1,
+            !grouped.Found ? "no Add a group button"
+                : grouped.Threw.Length > 0 ? grouped.Threw
+                : $"{grouped.Groups} groups added");
+
+        // And the group draws its own conditions, which is the forward reference itself.
+        Until(() => Descendants(view.FindName("VictoryGroups") as DependencyObject)
+            .OfType<Button>().Any(b => b.Content as string == "Add a condition"), 20);
+
+        var inside = On(() =>
+        {
+            var button = Descendants(view.FindName("VictoryGroups") as DependencyObject)
+                .OfType<Button>()
+                .FirstOrDefault(b => b.Content as string == "Add a condition");
+
+            if (button is null) return -1;
+
+            button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            return Descendants(view.FindName("VictoryGroups") as DependencyObject)
+                .OfType<ComboBox>().Count();
+        });
+
+        Until(() => Descendants(view.FindName("VictoryGroups") as DependencyObject)
+            .OfType<ComboBox>().Count() >= 2, 20);
+
+        var filled = On(() => Descendants(view.FindName("VictoryGroups") as DependencyObject)
+            .OfType<ComboBox>().Count(b => b.Items.Count > 0));
+
+        Check("and a condition inside the group offers its choices", filled >= 2,
+            inside < 0 ? "no Add a condition inside the group" : $"{filled} filled dropdowns");
+
         // Put the mission back the way it was found.
         On(() =>
         {

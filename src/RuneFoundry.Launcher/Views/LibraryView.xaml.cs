@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using RuneFoundry.Core;
+using RuneFoundry.Core.Scenarios;
 using RuneFoundry.UI;
 
 namespace RuneFoundry.Launcher.Views;
@@ -27,6 +28,7 @@ public partial class LibraryView : UserControl
         _applier.Status += SetStatus;
         _applier.Busy += SetBusy;
         _applier.LibraryChanged += RebuildRows;
+        _applier.WatchChanged += () => Dispatcher.Invoke(ShowWatchState);
         _applier.ProgressVisible += visible =>
             Progress.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         _applier.Progressed += (done, total, indeterminate) =>
@@ -128,6 +130,41 @@ public partial class LibraryView : UserControl
     private static string Trim(string name) => name.Length <= 18 ? name : name[..17] + "…";
 
     private void SetStatus(string text) => StatusText.Text = text;
+
+    /// <summary>
+    /// Puts the watcher's state on screen.
+    ///
+    /// Three things worth telling apart: not watching at all, watching but this mission has
+    /// no rules, and armed on a named mission. A refusal carries its reason, because "it did
+    /// nothing" without one is the hardest thing to act on.
+    /// </summary>
+    private void ShowWatchState()
+    {
+        var watcher = _applier.Watcher;
+
+        if (watcher is null)
+        {
+            WatchRow.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        WatchRow.Visibility = Visibility.Visible;
+
+        var (text, brush) = watcher.State switch
+        {
+            ScenarioState.Armed => ($"Watching this mod's rules for mission {watcher.ArmedSlot}.", "Accent"),
+            ScenarioState.Fired => (watcher.Detail ?? "The mission was decided by this mod's rules.", "Accent"),
+            ScenarioState.Watching => ("Watching. This mission has no rules of its own.", "Dim"),
+            ScenarioState.Refused => (watcher.Detail ?? "Not watching.", "Warn"),
+            _ => ("Not watching.", "Dim"),
+        };
+
+        WatchText.Text = text;
+        WatchDot.SetResourceReference(ForegroundProperty, brush);
+    }
+
+    /// <summary>Stops the watcher. Called when the window closes.</summary>
+    public void StopWatching() => _applier.StopWatching();
 
     private void ShowDetail(ModListItem? row)
     {

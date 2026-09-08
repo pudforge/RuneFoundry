@@ -34,6 +34,10 @@ public partial class MainWindow : Window
         LibraryHost.Content = _library;
         _library.EnsureInitialised();
 
+        // The watcher reads another program's memory, so it stops when this window does
+        // rather than living on in a process nobody can see any more.
+        Closed += (_, _) => _library?.StopWatching();
+
         RefreshGameBadge();
     }
 

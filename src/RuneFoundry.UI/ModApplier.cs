@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using RuneFoundry.Core;
+using RuneFoundry.Core.Scenarios;
 using RuneFoundry.Core.Formats;
 
 namespace RuneFoundry.UI;
@@ -246,6 +247,7 @@ public sealed class ModApplier
 
         Dictionary<int, int> objectives;
         Dictionary<int, int> thresholds;
+        Dictionary<int, ScenarioRules> scenarios;
         try
         {
             var path = _session.Vault.PackagePath(active.Id);
@@ -254,6 +256,17 @@ public sealed class ModApplier
             using var package = ModPackage.Open(path);
             objectives = new Dictionary<int, int>(package.Manifest.Objectives);
             thresholds = new Dictionary<int, int>(package.Manifest.Thresholds);
+
+            // A mod written against a newer rule shape is refused rather than half read:
+            // a condition this build does not know would never be met, and a mission that
+            // cannot be finished is worse than one that says why.
+            scenarios = package.Manifest.ScenarioVersion <= ScenarioRules.Version
+                ? new Dictionary<int, ScenarioRules>(package.Manifest.Scenarios)
+                : new Dictionary<int, ScenarioRules>();
+
+            if (package.Manifest.ScenarioVersion > ScenarioRules.Version)
+                Say("This mod's own mission rules were written by a newer RuneFoundry, so "
+                    + "they are left alone. Everything else is applied.");
         }
         catch
         {
@@ -261,11 +274,17 @@ public sealed class ModApplier
             return;
         }
 
+        // A slot with rules of its own gets the inert objective, so the game stops
+        // deciding that mission and waits for the watcher.
+        foreach (var slot in scenarios.Keys)
+            objectives[slot] = GameAddresses.InertObjective;
+
         if (objectives.Count == 0 && thresholds.Count == 0) return;
 
         // Everything else in a mod is file replacement. This one writes into a running,
         // signed-in Blizzard game, so it is the one thing worth asking about first.
-        if (CampaignRulesConsent.Ask(_owner, _session.Settings) != CampaignRulesConsent.Answer.Allow)
+        if (CampaignRulesConsent.Ask(_owner, _session.Settings, scenarios.Count > 0)
+            != CampaignRulesConsent.Answer.Allow)
         {
             Say("The mod is applied. Its campaign rules were left alone, as you asked.");
             return;
@@ -277,6 +296,77 @@ public sealed class ModApplier
             RunningGame.Apply(game, objectives, thresholds, TimeSpan.FromMinutes(3)));
 
         if (result.Message.Length > 0) Say(result.Message);
+
+        if (scenarios.Count > 0) StartWatching(game, active.Id, scenarios);
+    }
+
+    /// <summary>The watcher for this session, or null when nothing is being watched.</summary>
+    public ScenarioEngine? Watcher { get; private set; }
+
+    private ScenarioLock? _watchLock;
+
+    /// <summary>Raised whenever the watcher's state changes, for a UI that shows it.</summary>
+    public event Action? WatchChanged;
+
+    /// <summary>
+    /// Starts watching the running game for the mod's own rules.
+    ///
+    /// Held for the session and stopped when the game exits or the window closes. Only one
+    /// process may watch, because two would each write the victory pointer and the second
+    /// would land after the mission was already over.
+    /// </summary>
+    private void StartWatching(GameInstall game, string modId,
+                               IReadOnlyDictionary<int, ScenarioRules> scenarios)
+    {
+        StopWatching();
+
+        _watchLock = ScenarioLock.TryAcquire();
+        if (!_watchLock.Held)
+        {
+            _watchLock.Dispose();
+            _watchLock = null;
+            Say("Another RuneFoundry window is already watching this game.");
+            return;
+        }
+
+        var process = System.Diagnostics.Process.GetProcessesByName("Warcraft II").FirstOrDefault();
+        if (process is null)
+        {
+            StopWatching();
+            Say("The game closed before its rules could be watched.");
+            return;
+        }
+
+        Watcher = ScenarioEngine.TryAttach(game, process, scenarios, modId, out var refusal);
+
+        if (Watcher is null)
+        {
+            StopWatching();
+            if (refusal is not null) Say(refusal.Reason);
+            return;
+        }
+
+        Watcher.Armed += _ => WatchChanged?.Invoke();
+        Watcher.Disarmed += _ => WatchChanged?.Invoke();
+        Watcher.Refused += _ => WatchChanged?.Invoke();
+        Watcher.Fired += _ => WatchChanged?.Invoke();
+
+        Watcher.Start();
+        WatchChanged?.Invoke();
+
+        Say("Watching this mod's own mission rules.");
+    }
+
+    /// <summary>Stops watching and gives up the lock. Safe to call when not watching.</summary>
+    public void StopWatching()
+    {
+        Watcher?.Dispose();
+        Watcher = null;
+
+        _watchLock?.Dispose();
+        _watchLock = null;
+
+        WatchChanged?.Invoke();
     }
 
     public static string Summarise(ApplyResult result)

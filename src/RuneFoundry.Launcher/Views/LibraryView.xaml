@@ -155,6 +155,18 @@
             <StackPanel>
                 <TextBlock x:Name="StatusText" Style="{StaticResource Dim}" Margin="{StaticResource SectionBelow}"
                            TextTrimming="CharacterEllipsis"/>
+
+                <!-- Whether the mod's own mission rules are being watched. Silent failure
+                     is the practical risk in a watcher: it either works or it does nothing,
+                     and doing nothing looks exactly like a rule that is never met. So the
+                     state is on screen without opening anything. -->
+                <StackPanel x:Name="WatchRow" Orientation="Horizontal" Visibility="Collapsed"
+                            Margin="{StaticResource SectionBelow}">
+                    <TextBlock x:Name="WatchDot" Text="&#x25CF;" VerticalAlignment="Center"
+                               Margin="{StaticResource GapRight}"/>
+                    <TextBlock x:Name="WatchText" Style="{StaticResource Dim}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
                 <ProgressBar x:Name="Progress" Visibility="Collapsed" Margin="{StaticResource SectionBelow}"/>
                 <Grid>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

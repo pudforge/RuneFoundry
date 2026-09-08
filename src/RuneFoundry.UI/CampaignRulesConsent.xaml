@@ -15,6 +15,13 @@
         <TextBlock TextWrapping="Wrap" Margin="{StaticResource GapBelow}"
                    Text="A mission's victory condition is not in any file RuneFoundry can replace. It is a number inside the game's program file, and the game refuses to start if that file is edited. So to change it, RuneFoundry writes the number into the game's memory while it is running."/>
 
+        <!-- Shown only for a mod whose author wrote rules of their own. A one-time write
+             before a mission and a watcher that runs for the whole session are different
+             things to agree to, and the second one deserves its own sentence. -->
+        <TextBlock x:Name="WatcherNote" TextWrapping="Wrap" Margin="{StaticResource GapBelow}"
+                   Visibility="Collapsed"
+                   Text="This mod also has mission rules its author wrote. For those, RuneFoundry reads the running game a few times a second, and when the rules are met it sets one number that tells the game the mission is over. It writes nothing to disk, and it works in the single-player campaign only."/>
+
         <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
                 BorderThickness="{StaticResource Hairline}" CornerRadius="{StaticResource Radius}"
                 Padding="{StaticResource CardPadding}" Margin="{StaticResource GapBelow}">

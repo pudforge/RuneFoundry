@@ -35,12 +35,17 @@ public partial class CampaignRulesConsent : Window
     /// The remembered answer lives in settings rather than per mod: it is a judgement about
     /// the person's own account, not about one author's work.
     /// </summary>
-    public static Answer Ask(Window? owner, Settings settings)
+    /// <param name="watches">
+    /// Whether this mod carries rules its author wrote, which are watched for the whole
+    /// session rather than written once before a mission.
+    /// </param>
+    public static Answer Ask(Window? owner, Settings settings, bool watches = false)
     {
         if (settings.CampaignRulesConsent is "allow") return Answer.Allow;
         if (settings.CampaignRulesConsent is "skip") return Answer.Skip;
 
         var dialog = new CampaignRulesConsent { Owner = owner };
+        if (watches) dialog.WatcherNote.Visibility = Visibility.Visible;
         dialog.ShowDialog();
 
         if (dialog.Remember.IsChecked == true)

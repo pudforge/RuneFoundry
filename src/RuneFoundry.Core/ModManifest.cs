@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using RuneFoundry.Core.Scenarios;
+
 namespace RuneFoundry.Core;
 
 public sealed class ModFileEntry
@@ -46,6 +48,21 @@ public sealed class ModManifest
 
     /// <summary>Threshold words for counter objectives, by campaign slot.</summary>
     [JsonPropertyName("thresholds")] public Dictionary<int, int> Thresholds { get; set; } = new();
+
+    /// <summary>
+    /// Rules the author wrote, per mission slot. Carried in the mod so the Launcher can
+    /// watch for them without the project that built it.
+    /// </summary>
+    [JsonPropertyName("scenarios")]
+    public Dictionary<int, ScenarioRules> Scenarios { get; set; } = new();
+
+    /// <summary>
+    /// The rule shape this mod was written against. A mod from a newer build is refused
+    /// rather than half read: a condition this version does not know would silently never
+    /// be met, which looks like a mission that cannot be finished.
+    /// </summary>
+    [JsonPropertyName("scenarioVersion")]
+    public int ScenarioVersion { get; set; } = ScenarioRules.Version;
 
     public static readonly JsonSerializerOptions JsonOptions = new()
     {

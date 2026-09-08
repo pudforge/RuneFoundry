@@ -2,6 +2,7 @@ using System.IO;
 using System.Security.Cryptography;
 using RuneFoundry.Core;
 using RuneFoundry.Core.Formats;
+using RuneFoundry.Core.Scenarios;
 using RuneFoundry.UI;
 
 // End-to-end checks against a synthetic install, so the destructive paths (install,
@@ -4010,6 +4011,128 @@ runner.Test("Deathwing speaks, and the Skeleton does not", () =>
 
     Console.WriteLine($"        ({strings.UnitName(0x23)}: {deathwing.Count} lines; "
                       + $"{strings.UnitName(0x37)}: {skeleton.Count})");
+});
+
+runner.Test("scenario rules survive a round trip through the project file", () =>
+{
+    using var sandbox = new Sandbox();
+    var project = sandbox.CreateProject("rules", "Rules");
+
+    var rules = new ScenarioRules(
+        new ConditionSet(Match.All, new[]
+        {
+            new Condition(ConditionKind.OwnCount, Counter: "farm", Count: 4),
+            new Condition(ConditionKind.EnemyHasNone, Counter: "refinery"),
+        }),
+        // An empty defeat set is the common case, and it has to come back empty rather
+        // than null.
+        ConditionSet.Empty);
+
+    Runner.IsTrue(project.SetScenario(6, rules), "the rule is stored");
+    Runner.IsTrue(!project.SetScenario(6, rules), "and storing the same rule again is not a change");
+
+    var reopened = ModProject.Load(project.ProjectPath);
+    var back = reopened.ScenarioFor(6);
+
+    Runner.IsTrue(back is not null, "it survives the save and load");
+    Runner.AreEqual(2, back!.Victory.Conditions.Count, "both victory conditions come back");
+    Runner.AreEqual("farm", back.Victory.Conditions[0].Counter, "and keep their counter");
+    Runner.AreEqual(4, back.Victory.Conditions[0].Count, "and their count");
+    Runner.IsTrue(back.Defeat.IsEmpty, "the empty defeat set is still empty");
+
+    // Removing is spelled as setting nothing, so the editor has one call for both.
+    Runner.IsTrue(reopened.SetScenario(6, null), "clearing is a change");
+    Runner.IsTrue(ModProject.Load(project.ProjectPath).ScenarioFor(6) is null, "and it stays cleared");
+});
+
+runner.Test("scenario rules travel in the built mod", () =>
+{
+    using var sandbox = new Sandbox();
+    var game = sandbox.CreateGame();
+    var project = sandbox.CreateProject("carry", "Carry");
+
+    project.SetScenario(3, new ScenarioRules(
+        new ConditionSet(Match.Any, new[] { new Condition(ConditionKind.PlayerEliminated, Player: 1) }),
+        ConditionSet.Empty));
+
+    var manifest = project.BuildManifest(game);
+
+    Runner.AreEqual(1, manifest.Scenarios.Count, "the mod carries the rule");
+    Runner.AreEqual(ScenarioRules.Version, manifest.ScenarioVersion, "and says which shape it is");
+    Runner.AreEqual(Match.Any, manifest.Scenarios[3].Victory.Match, "with the match kept");
+    Runner.AreEqual(1, manifest.Scenarios[3].Victory.Conditions[0].Player, "and the player kept");
+});
+
+runner.Test("the validator reads a rule against the map it will run on", () =>
+{
+    var game = GameInstall.Detect();
+    if (game is null) { Console.WriteLine("        (skipped)"); return; }
+
+    var path = game.ResolveDataPath("Campaign/Human/Human01.pud");
+    if (!File.Exists(path)) { Console.WriteLine("        (skipped)"); return; }
+
+    var map = PudFile.Load(path);
+
+    // A mission with no way to win is the one thing that is always wrong.
+    var none = ScenarioValidator.Validate(ScenarioRules.Empty, map);
+    Runner.IsTrue(none.Any(f => f.Level == FindingLevel.Problem), "no victory rule is a problem");
+
+    // Destroying every enemy Refinery, on a map where nobody has one.
+    var refineries = map.Units.Count(u => u.Type is 0x54 or 0x55);
+    var noRefinery = ScenarioValidator.Validate(new ScenarioRules(
+        new ConditionSet(Match.All, new[] { new Condition(ConditionKind.EnemyHasNone, Counter: "refinery") }),
+        ConditionSet.Empty), map);
+
+    if (refineries == 0)
+        Runner.IsTrue(noRefinery.Any(f => f.Message.Contains("first tick", StringComparison.Ordinal)),
+            "a rule that is true from the start is called out");
+
+    // A counter this build does not know.
+    var unknown = ScenarioValidator.Validate(new ScenarioRules(
+        new ConditionSet(Match.All, new[] { new Condition(ConditionKind.OwnCount, Counter: "zeppelin_factory") }),
+        ConditionSet.Empty), map);
+
+    Runner.IsTrue(unknown.Any(f => f.Level == FindingLevel.Problem
+                                   && f.Message.Contains("does not know", StringComparison.Ordinal)),
+        "an unknown counter is refused rather than ignored");
+
+    // Watching a unit the map does not contain can never come true.
+    var noDragon = ScenarioValidator.Validate(new ScenarioRules(
+        new ConditionSet(Match.All, new[] { new Condition(ConditionKind.UnitAlive, Counter: "dragon") }),
+        ConditionSet.Empty), map);
+
+    var dragons = map.Units.Count(u => u.Type is 0x2A or 0x2B);
+    if (dragons == 0)
+        Runner.IsTrue(noDragon.Any(f => f.Level == FindingLevel.Problem), "and so is a unit that is not there");
+
+    Console.WriteLine($"        (Human01: {map.Units.Count} starting units, "
+                      + $"{refineries} refineries, {dragons} dragons)");
+});
+
+runner.Test("every counter in the catalogue is usable", () =>
+{
+    // A name is what a saved rule holds, so two counters sharing one would make a rule
+    // mean whichever the dictionary happened to keep.
+    var names = CounterCatalog.All.Select(c => c.Name).ToList();
+    Runner.AreEqual(names.Count, names.Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+        "no two counters share a name");
+
+    foreach (var counter in CounterCatalog.All)
+    {
+        Runner.IsTrue(counter.Total >= 0x00900000 && counter.Total <= 0x00A00000,
+            $"{counter.Name} points into the game's data: {counter.Total:X8}");
+
+        Runner.IsTrue(CounterCatalog.Find(counter.Name) == counter, $"{counter.Name} is findable");
+        Runner.IsTrue(counter.Label.Length > 0, $"{counter.Name} has something to show");
+    }
+
+    // The addresses are a word[16] grid on a 0x20 stride, so every one lands on a stride.
+    foreach (var counter in CounterCatalog.All.Where(c => c.Total >= 0x0091B38C))
+        Runner.AreEqual(0xCu, (counter.Total - 0x0091B380) % 0x20,
+            $"{counter.Name} sits on the counter grid");
+
+    Console.WriteLine($"        ({CounterCatalog.All.Count} counters, "
+                      + $"{CounterCatalog.All.Count(c => c.Active is not null)} with a finished-only tally)");
 });
 
 runner.Test("a sprite knows its seasonal twins", () =>

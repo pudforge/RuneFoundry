@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using RuneFoundry.Core.Scenarios;
+
 namespace RuneFoundry.Core;
 
 /// <summary>
@@ -69,6 +71,35 @@ public sealed class ModProject
         if (threshold is null) Thresholds.Remove(slot);
         else Thresholds[slot] = threshold.Value;
 
+        return true;
+    }
+
+    /// <summary>
+    /// Rules the author wrote themselves, per mission slot.
+    ///
+    /// Beside <see cref="Objectives"/> rather than inside it: an objective id names one of
+    /// the game's own rules, and these are a different thing that happens to answer the same
+    /// question. A slot with both is deciding twice, which the editor stops.
+    /// </summary>
+    [JsonPropertyName("scenarios")]
+    public Dictionary<int, ScenarioRules> Scenarios { get; set; } = new();
+
+    public ScenarioRules? ScenarioFor(int slot) =>
+        Scenarios.TryGetValue(slot, out var rules) ? rules : null;
+
+    public bool SetScenario(int slot, ScenarioRules? rules)
+    {
+        if (rules is null || rules.IsEmpty)
+        {
+            if (!Scenarios.Remove(slot)) return false;
+            Save();
+            return true;
+        }
+
+        if (ScenarioFor(slot) == rules) return false;
+
+        Scenarios[slot] = rules;
+        Save();
         return true;
     }
 
@@ -307,6 +338,7 @@ public sealed class ModProject
             BuiltAgainst = game?.Root ?? LastGameRoot,
             Objectives = new Dictionary<int, int>(Objectives),
             Thresholds = new Dictionary<int, int>(Thresholds),
+            Scenarios = new Dictionary<int, ScenarioRules>(Scenarios),
         };
 
         var stock = game is null

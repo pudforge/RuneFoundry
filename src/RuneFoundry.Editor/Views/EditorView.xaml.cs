@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using Microsoft.Win32;
 using RuneFoundry.Core;
 using RuneFoundry.Core.Formats;
+using RuneFoundry.Core.Scenarios;
 using RuneFoundry.UI;
 
 namespace RuneFoundry.Editor.Views;
@@ -3034,6 +3035,38 @@ public partial class EditorView : UserControl
         LaunchTargetBox.SelectedIndex = 0;
     }
 
+    /// <summary>
+    /// The applier from the last Save and test, kept for its rule watcher.
+    ///
+    /// The watcher reads the running game for as long as a mission is being played, so it
+    /// outlives the button press that started it and something has to be able to stop it.
+    /// </summary>
+    private ModApplier? _testApplier;
+
+    /// <summary>
+    /// Says what the rule watcher is doing, in the status line.
+    ///
+    /// Without this the editor's own test run is the one place a custom rule can fail
+    /// invisibly: the mission simply never ends, and nothing on screen says whether
+    /// anything is watching for it.
+    /// </summary>
+    private void ShowWatchState()
+    {
+        if (_testApplier?.Watcher is not { } watcher) return;
+
+        SetStatus(watcher.State switch
+        {
+            ScenarioState.Armed => $"Watching your rules for mission {watcher.ArmedSlot}.",
+            ScenarioState.Fired => watcher.Detail ?? "Your rules decided the mission.",
+            ScenarioState.Refused => watcher.Detail ?? "Not watching your rules.",
+            ScenarioState.Watching => "Watching. This mission has no rules of its own.",
+            _ => "Not watching.",
+        });
+    }
+
+    /// <summary>Stops the rule watcher. Called when the editor closes.</summary>
+    public void StopWatching() => _testApplier?.StopWatching();
+
     private async void OnTestInGame(object sender, RoutedEventArgs e)
     {
         if (_project is null || _session.Installer is null) return;
@@ -3084,8 +3117,14 @@ public partial class EditorView : UserControl
 
             // The editor installs and applies through the same service the loader uses, so
             // testing a mod does exactly what playing one does.
+            // Held rather than local: the applier owns the rule watcher, and one that
+            // nothing holds cannot be shown, stopped, or replaced by the next test run.
+            _testApplier?.StopWatching();
+
             var applier = new ModApplier(_session, Owner);
             applier.Status += SetStatus;
+            applier.WatchChanged += () => Dispatcher.Invoke(ShowWatchState);
+            _testApplier = applier;
 
             var modId = applier.Install(packagePath);
             if (modId is null)

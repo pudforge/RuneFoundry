@@ -38,6 +38,9 @@ public partial class MainWindow : Window
         EditorHost.Content = _editor;
         _editor.EnsureInitialised();
 
+        // The rule watcher reads another program's memory, so it stops with this window.
+        Closed += (_, _) => _editor?.StopWatching();
+
         // Ctrl+Z and Ctrl+Y, on the window so they work wherever the focus happens to be —
         // except inside a text box, where the box's own undo is the one people mean.
         InputBindings.Add(new KeyBinding(new Command(() => _editor?.UndoLast()),

@@ -859,6 +859,55 @@ internal static class Program
             Shot(window, "campaign");
         }
 
+        // Writing your own mission rule. The mode is a choice on the same card as the
+        // game's own rules, and picking it has to reveal somewhere to write them.
+        var ownRules = On(() =>
+        {
+            var mine = view.FindName("RuleOfMyOwn") as System.Windows.Controls.Primitives.ToggleButton;
+            var panel = view.FindName("OwnRulesPanel") as FrameworkElement;
+
+            if (mine is null || panel is null) return (Found: false, Shown: false, Rows: 0);
+
+            mine.IsChecked = true;
+
+            var list = view.FindName("VictoryList") as ItemsControl;
+            return (Found: true, Shown: panel.Visibility == Visibility.Visible, Rows: Items(list).Count);
+        });
+
+        Check("a mission can use rules the author writes", ownRules.Found && ownRules.Shown,
+            ownRules.Found ? "the panel stayed hidden" : "RuleOfMyOwn is missing");
+
+        // Adding one draws a row with its dropdowns.
+        var added = On(() =>
+        {
+            var button = Descendants(view.FindName("OwnRulesPanel") as DependencyObject)
+                .OfType<Button>()
+                .FirstOrDefault(b => b.Content as string == "Add a condition");
+
+            if (button is null) return (Rows: -1, Boxes: 0);
+
+            button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            return (Rows: Items(view.FindName("VictoryList") as ItemsControl).Count, Boxes: 0);
+        });
+
+        // The row is generated after the click settles, so the dropdowns need a moment.
+        Until(() => Descendants(view.FindName("VictoryList") as DependencyObject)
+            .OfType<ComboBox>().Any(), 20);
+
+        var boxes = On(() => Descendants(view.FindName("VictoryList") as DependencyObject)
+            .OfType<ComboBox>()
+            .Count(b => b.Items.Count > 0));
+
+        Check("adding a condition draws one", added.Rows == 1, $"{added.Rows} rows");
+        Check("and the condition offers its choices", boxes >= 2, $"{boxes} filled dropdowns");
+
+        // Put the mission back the way it was found.
+        On(() =>
+        {
+            if (view.FindName("RuleFromGame") is System.Windows.Controls.Primitives.ToggleButton game)
+                game.IsChecked = true;
+        });
+
         // The artwork belongs to the campaign, not to a mission, so it needs a campaign row.
         var heading = rows.FirstOrDefault(r =>
             r.GetType().GetProperty("IsCampaign")?.GetValue(r) as bool? == true);

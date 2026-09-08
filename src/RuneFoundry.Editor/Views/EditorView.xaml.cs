@@ -2964,6 +2964,18 @@ public partial class EditorView : UserControl
     {
         if (_project is null || !ReadyToBuild()) return;
 
+        // A mission that cannot be won is the one thing worth stopping a build for. This
+        // is the last moment anyone looks before other people play it.
+        var broken = CampaignView.ProblemsInRules(_project, _session);
+        if (broken.Count > 0)
+        {
+            Ui.Error(Owner, "Some missions cannot be finished",
+                string.Join("\n", broken.Take(8))
+                + (broken.Count > 8 ? $"\n… and {broken.Count - 8} more" : "")
+                + "\n\nOpen the Campaign tab and fix these before building.");
+            return;
+        }
+
         if (_session.Game is not null)
         {
             // Against the vault's originals, the way the overrides list does it. Applying

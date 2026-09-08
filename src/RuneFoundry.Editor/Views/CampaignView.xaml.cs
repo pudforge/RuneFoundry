@@ -653,6 +653,7 @@ public partial class CampaignView : UserControl
         ShowTech();
 
         _loading = false;
+        ShowRules();
         _textDirty = false;
     }
 

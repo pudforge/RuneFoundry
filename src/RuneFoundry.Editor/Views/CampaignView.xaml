@@ -6,6 +6,63 @@
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:FindingColourConverter x:Key="FindingColour"/>
+
+        <!-- One condition. The kind picks what the rest of the row means, so the fields
+             that do not apply are hidden by the row itself rather than greyed. -->
+        <DataTemplate x:Key="ConditionRow">
+            <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}"
+                    Margin="{StaticResource TightBelow}">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <ComboBox Width="190" ItemsSource="{Binding Kinds}" DisplayMemberPath="Label"
+                                  SelectedItem="{Binding Kind, Mode=TwoWay}"
+                                  Margin="{StaticResource GapRight}"/>
+
+                        <ComboBox Width="180" ItemsSource="{Binding Counters}" DisplayMemberPath="Label"
+                                  SelectedItem="{Binding Counter, Mode=TwoWay}"
+                                  Visibility="{Binding NeedsCounter, Converter={StaticResource BoolToVis}}"
+                                  Margin="{StaticResource GapRight}"/>
+
+                        <ComboBox Width="90" ItemsSource="{Binding Comparisons}"
+                                  SelectedItem="{Binding Op, Mode=TwoWay}"
+                                  Visibility="{Binding NeedsCount, Converter={StaticResource BoolToVis}}"
+                                  Margin="{StaticResource GapRight}"/>
+
+                        <TextBox Width="56" Text="{Binding Count, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Visibility="{Binding NeedsCount, Converter={StaticResource BoolToVis}}"
+                                 Margin="{StaticResource GapRight}"/>
+
+                        <Button Content="Remove" Click="OnRemoveCondition"
+                                Padding="{StaticResource SmallButtonPadding}"
+                                HorizontalAlignment="Right"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TightAbove}">
+                        <TextBlock Text="Player" VerticalAlignment="Center"
+                                   Margin="{StaticResource GapRight}"/>
+                        <ComboBox Width="120" ItemsSource="{Binding Players}" DisplayMemberPath="Label"
+                                  SelectedItem="{Binding Player, Mode=TwoWay}"
+                                  Margin="{StaticResource GapRight}"/>
+
+                        <CheckBox Content="Finished only" IsChecked="{Binding FinishedOnly, Mode=TwoWay}"
+                                  VerticalAlignment="Center" Margin="{StaticResource GapRight}"
+                                  Visibility="{Binding CanBeFinishedOnly, Converter={StaticResource BoolToVis}}"
+                                  ToolTip="Count only what is built, not what is under construction."/>
+
+                        <TextBlock Text="of which heroes" VerticalAlignment="Center"
+                                   Visibility="{Binding NeedsHeroes, Converter={StaticResource BoolToVis}}"
+                                   Margin="{StaticResource GapRight}"/>
+                        <TextBox Width="48" Text="{Binding Heroes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Visibility="{Binding NeedsHeroes, Converter={StaticResource BoolToVis}}"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding Summary}" Style="{StaticResource Dim}"
+                               FontSize="{StaticResource SmallText}" TextWrapping="Wrap"
+                               Margin="{StaticResource TightAbove}"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
 
         <!-- One template, two lists: a mission's briefing pages and the
              campaign's closing screen are the same thing to edit. -->
@@ -421,6 +478,17 @@
                                            TextWrapping="Wrap"
                                            Text="Each campaign slot uses one of the game's scenario rules. Any mission can use any rule."/>
 
+                                <!-- One of the game's rules is the default because it is the
+                                     low-risk path: it needs nothing watching the game. -->
+                                <StackPanel Orientation="Horizontal" Margin="{StaticResource GapBelow}">
+                                    <RadioButton x:Name="RuleFromGame" Content="Use a rule from the game"
+                                                 Style="{StaticResource ModeChip}" IsChecked="True"
+                                                 Checked="OnRuleModeChanged"/>
+                                    <RadioButton x:Name="RuleOfMyOwn" Content="Write your own"
+                                                 Style="{StaticResource ModeChip}" Margin="{StaticResource TightLeft}"
+                                                 Checked="OnRuleModeChanged"/>
+                                </StackPanel>
+
                                 <ComboBox x:Name="ObjectiveBox" SelectionChanged="OnObjectiveChanged"
                                           MaxWidth="580" HorizontalAlignment="Left" MinWidth="440">
                                     <!-- Three lines per row: how it is won, how it is lost,
@@ -488,6 +556,45 @@
                                 <TextBlock x:Name="ObjectiveWarning" Style="{StaticResource Dim}"
                                            FontSize="{StaticResource SmallText}" TextWrapping="Wrap" Margin="{StaticResource GapAbove}"
                                            Foreground="{DynamicResource Bad}"/>
+
+                                <!-- The author's own rules. Two lists, because a mission is
+                                     won by one set of things and lost by another, and the
+                                     two are edited apart. -->
+                                <StackPanel x:Name="OwnRulesPanel" Visibility="Collapsed">
+                                    <TextBlock Text="Won when" FontWeight="SemiBold"
+                                               Margin="{StaticResource GapBelow}"/>
+                                    <ItemsControl x:Name="VictoryList" ItemTemplate="{StaticResource ConditionRow}"/>
+                                    <Button Content="Add a condition" Click="OnAddVictory"
+                                            HorizontalAlignment="Left"
+                                            Padding="{StaticResource ButtonPadding}"
+                                            Margin="{StaticResource TightBelow}"/>
+
+                                    <TextBlock Text="Lost when" FontWeight="SemiBold"
+                                               Margin="{StaticResource SectionAbove}"/>
+                                    <TextBlock Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}"
+                                               TextWrapping="Wrap" Margin="{StaticResource TightBelow}"
+                                               Text="Leave this empty to keep the game's own defeat rule, which ends the mission when you have nothing left."/>
+                                    <ItemsControl x:Name="DefeatList" ItemTemplate="{StaticResource ConditionRow}"/>
+                                    <Button Content="Add a condition" Click="OnAddDefeat"
+                                            HorizontalAlignment="Left"
+                                            Padding="{StaticResource ButtonPadding}"
+                                            Margin="{StaticResource TightBelow}"/>
+
+                                    <TextBlock Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}"
+                                               TextWrapping="Wrap" Margin="{StaticResource SectionAbove}"
+                                               Text="Nothing about a rule you write reaches the player. Say what to do in the Objectives box above."/>
+
+                                    <ItemsControl x:Name="RuleFindings" Margin="{StaticResource GapAbove}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
+                                                           FontSize="{StaticResource SmallText}"
+                                                           Foreground="{Binding Level, Converter={StaticResource FindingColour}}"
+                                                           Margin="{StaticResource TightBelow}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 

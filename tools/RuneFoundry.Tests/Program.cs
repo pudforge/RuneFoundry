@@ -4135,6 +4135,133 @@ runner.Test("every counter in the catalogue is usable", () =>
                       + $"{CounterCatalog.All.Count(c => c.Active is not null)} with a finished-only tally)");
 });
 
+runner.Test("every condition kind reads what it claims to", () =>
+{
+    var farm = CounterCatalog.Find("farm")!;
+
+    var game = new FakeSnapshot().Set(farm.Total, 0, 4);
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.OwnCount, Counter: "farm", Count: 4), game, 0), "4 farms is at least 4");
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.OwnCount, Counter: "farm", Count: 5), game, 0), "and not at least 5");
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.OwnCount, Counter: "farm", Op: Compare.AtMost, Count: 4), game, 0),
+        "and at most 4");
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.OwnCount, Counter: "farm", Count: 5, Invert: true), game, 0),
+        "inverting turns the false one true");
+
+    // EnemyHasNone looks at every player but ours and the neutral slot.
+    var refinery = CounterCatalog.Find("refinery")!;
+    var enemies = new FakeSnapshot().Set(refinery.Total, 3, 1);
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.EnemyHasNone, Counter: "refinery"), enemies, 0), "player 3 still has one");
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.EnemyHasNone, Counter: "refinery"), enemies, 3),
+        "and if we are player 3, ours does not count against us");
+
+    var neutral = new FakeSnapshot().Set(refinery.Total, ScenarioValidator.NeutralPlayer, 2);
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.EnemyHasNone, Counter: "refinery"), neutral, 0),
+        "the neutral slot is not an enemy");
+
+    // Delivered packs heroes into the same word.
+    var delivered = new FakeSnapshot().Set(GameAddresses.Delivered, 0, 5 + 2 * GameAddresses.HeroWeight);
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.Delivered, Count: 5, Heroes: 2), delivered, 0), "5 delivered, 2 heroes");
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.Delivered, Count: 5, Heroes: 3), delivered, 0), "but not 3 heroes");
+
+    var scored = new FakeSnapshot()
+        .Set(GameAddresses.Kills, 0, 12)
+        .Set(GameAddresses.Razings, 0, 3)
+        .Set(GameAddresses.Rescued, 0, 1)
+        .SetResource(GameAddresses.Gold, 0, 2400);
+
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(new Condition(ConditionKind.Kills, Count: 10), scored, 0), "kills");
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(new Condition(ConditionKind.Razings, Count: 3), scored, 0), "razings");
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(new Condition(ConditionKind.Rescued, Count: 1), scored, 0), "rescued");
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.Resource, Counter: "gold", Count: 2000), scored, 0), "gold");
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.Resource, Counter: "gold", Count: 5000), scored, 0), "but not that much gold");
+
+    // Finished-only reads the other table where the game keeps one.
+    var knight = CounterCatalog.Find("knight")!;
+    var half = new FakeSnapshot().Set(knight.Total, 0, 3).Set(knight.Active!.Value, 0, 1);
+
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.OwnCount, Counter: "knight", Count: 3), half, 0), "3 owned");
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.OwnCount, Counter: "knight", Count: 3, FinishedOnly: true), half, 0),
+        "but only 1 finished");
+});
+
+runner.Test("elimination matches the game's own arithmetic", () =>
+{
+    // 0x004F4316: no buildings, and units minus flyers, transports and tankers at zero.
+    var onlyFlyer = new FakeSnapshot()
+        .Set(GameAddresses.UnitsAlive, 2, 1)
+        .Set(GameAddresses.Flyers, 2, 1);
+
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.PlayerEliminated, Player: 2), onlyFlyer, 0),
+        "a lone flying machine does not keep a player in");
+
+    var oneFootman = new FakeSnapshot().Set(GameAddresses.UnitsAlive, 2, 1);
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.PlayerEliminated, Player: 2), oneFootman, 0), "but a footman does");
+
+    var justAFarm = new FakeSnapshot().Set(GameAddresses.BuildingsAlive, 2, 1);
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.PlayerEliminated, Player: 2), justAFarm, 0),
+        "and so does a building on its own");
+
+    var tankerAndTransport = new FakeSnapshot()
+        .Set(GameAddresses.UnitsAlive, 2, 2)
+        .Set(GameAddresses.Tankers, 2, 1)
+        .Set(GameAddresses.Transports, 2, 1);
+
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.PlayerEliminated, Player: 2), tankerAndTransport, 0),
+        "a tanker and a transport are not an army");
+});
+
+runner.Test("a value that cannot be read never satisfies a rule", () =>
+{
+    var farm = CounterCatalog.Find("farm")!;
+
+    var blind = new FakeSnapshot().Unreadable(farm.Total, 0);
+    Runner.AreEqual(null, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.OwnCount, Counter: "farm", Count: 1), blind, 0),
+        "an unreadable counter is unknown, not false");
+    Runner.AreEqual(null, ScenarioEvaluator.Evaluate(
+        new Condition(ConditionKind.OwnCount, Counter: "farm", Count: 1, Invert: true), blind, 0),
+        "and inverting an unknown leaves it unknown");
+
+    var barracks = CounterCatalog.Find("barracks")!;
+    var set = new ConditionSet(Match.All, new[]
+    {
+        new Condition(ConditionKind.OwnCount, Counter: "barracks", Count: 1),
+        new Condition(ConditionKind.OwnCount, Counter: "farm", Count: 1),
+    });
+
+    var mixed = new FakeSnapshot().Set(barracks.Total, 0, 1).Unreadable(farm.Total, 0);
+    Runner.AreEqual(null, ScenarioEvaluator.Evaluate(set, mixed, 0),
+        "one unreadable condition makes the whole set unknown");
+
+    var known = new FakeSnapshot().Set(barracks.Total, 0, 0).Unreadable(farm.Total, 0);
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(set, known, 0),
+        "a condition known to be false settles it");
+
+    var either = new ConditionSet(Match.Any, set.Conditions);
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(either, mixed, 0),
+        "any is satisfied by the one we could read");
+
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(ConditionSet.Empty, mixed, 0),
+        "an empty set is never met");
+});
+
 runner.Test("a sprite knows its seasonal twins", () =>
 {
     var game = GameInstall.Detect();

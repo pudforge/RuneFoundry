@@ -584,6 +584,10 @@
                                                TextWrapping="Wrap" Margin="{StaticResource SectionAbove}"
                                                Text="Nothing about a rule you write reaches the player. Say what to do in the Objectives box above."/>
 
+                                    <TextBlock Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}"
+                                               TextWrapping="Wrap" Margin="{StaticResource TightAbove}"
+                                               Text="A rule you write is watched while the game runs. Load a save with RuneFoundry closed and the mission falls back to the game's own rule, so tell players to keep it open."/>
+
                                     <ItemsControl x:Name="RuleFindings" Margin="{StaticResource GapAbove}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>

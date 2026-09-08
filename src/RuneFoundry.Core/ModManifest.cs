@@ -101,8 +101,11 @@ public sealed class ModManifest
             problems.Add($"Mod id '{Id}' is invalid. Use 2-64 characters of lowercase letters, digits, dot, dash or underscore.");
         if (string.IsNullOrWhiteSpace(Name))
             problems.Add("Mod name is required.");
-        if (Files.Count == 0)
-            problems.Add("Mod contains no files.");
+        // A mod is not only files: campaign rules live in this manifest, so one that
+        // replaces nothing and sets a victory condition still has something to install.
+        if (Files.Count == 0 && Scenarios.Count == 0
+            && Objectives.Count == 0 && Thresholds.Count == 0)
+            problems.Add("Mod contains no files and no campaign rules.");
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in Files)

@@ -364,8 +364,13 @@ public sealed class ModProject
     public ModManifest Build(string destinationPath, GameInstall? game, IProgress<string>? progress = null)
     {
         var overrides = EnumerateOverrides();
-        if (overrides.Count == 0)
-            throw new InvalidOperationException("This project has no files to package. Add at least one override first.");
+
+        // A mod is not only files. Campaign rules live in the manifest, so a project whose
+        // whole content is one victory condition is a mod worth packaging.
+        if (overrides.Count == 0 && Scenarios.Count == 0
+            && Objectives.Count == 0 && Thresholds.Count == 0)
+            throw new InvalidOperationException(
+                "This project has nothing to package. Replace a file, or set a campaign rule.");
 
         var files = overrides.ToDictionary(p => p, ResolveContentPath, StringComparer.OrdinalIgnoreCase);
 

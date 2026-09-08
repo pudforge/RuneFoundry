@@ -2934,6 +2934,16 @@ public partial class EditorView : UserControl
 
     // ---- build and test -------------------------------------------------
 
+    /// <summary>
+    /// Whether the project carries campaign rules, which are content even when no file is
+    /// replaced. A mission's victory condition lives in the manifest rather than in a file,
+    /// so a mod can be worth building with nothing in its content folder at all.
+    /// </summary>
+    private bool HasRules =>
+        _project is not null
+        && (_project.Scenarios.Count > 0 || _project.Objectives.Count > 0
+            || _project.Thresholds.Count > 0);
+
     private bool ReadyToBuild()
     {
         if (_project is null) return false;
@@ -2943,7 +2953,7 @@ public partial class EditorView : UserControl
         // the mod at all.
         if (!SavePendingEdit()) return false;
 
-        if (_project.EnumerateOverrides().Count == 0)
+        if (_project.EnumerateOverrides().Count == 0 && !HasRules)
         {
             Ui.Error(Owner, "Nothing to package",
                 "This mod does not replace any files yet.\n\n" +
@@ -3081,7 +3091,10 @@ public partial class EditorView : UserControl
         // launch because there is nothing to install answers a question nobody asked.
         if (!SavePendingEdit()) return;
 
-        if (_project.EnumerateOverrides().Count == 0)
+        // A mod made only of campaign rules replaces no files, and it is still a mod. This
+        // used to skip the build, install and apply, so the rules never reached the game
+        // and the only sign was one line saying there was nothing to install.
+        if (_project.EnumerateOverrides().Count == 0 && !HasRules)
         {
             SetStatus(target?.Scenario is null
                 ? "Nothing to install. Starting the game as it is."

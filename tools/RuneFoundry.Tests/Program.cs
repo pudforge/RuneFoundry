@@ -892,7 +892,8 @@ runner.Test("building an empty project fails with a message, not a crash", () =>
     catch (InvalidOperationException ex)
     {
         threw = true;
-        Runner.IsTrue(ex.Message.Contains("no files"), "message should say what is missing: " + ex.Message);
+        Runner.IsTrue(ex.Message.Contains("nothing to package", StringComparison.OrdinalIgnoreCase),
+            "message should say what is missing: " + ex.Message);
     }
     Runner.IsTrue(threw, "building nothing must be refused");
 });
@@ -4470,6 +4471,36 @@ runner.Test("a crashed session is only resumed against the game it set up", () =
     };
 
     Runner.IsTrue(!ScenarioEngine.IsOurs(reused, mine), "a matching pid alone is not enough");
+});
+
+runner.Test("a mod made only of rules still builds", () =>
+{
+    using var sandbox = new Sandbox();
+    var game = sandbox.CreateGame();
+    var project = sandbox.CreateProject("rulesonly", "Rules Only");
+
+    // No file overrides at all: the whole mod is one victory condition.
+    project.SetScenario(0, new ScenarioRules(
+        new ConditionSet(Match.All, new[]
+        {
+            new Condition(ConditionKind.OwnCount, Counter: "farm", Count: 4),
+        }),
+        ConditionSet.Empty));
+
+    Runner.AreEqual(0, project.EnumerateOverrides().Count, "it replaces nothing");
+
+    var path = Path.Combine(sandbox.Root, "rulesonly.w2mod");
+    var manifest = project.Build(path, game);
+
+    Runner.IsTrue(File.Exists(path), "the package is written");
+    Runner.AreEqual(0, manifest.Files.Count, "with no files in it");
+    Runner.AreEqual(1, manifest.Scenarios.Count, "and the rule inside");
+
+    // And it reads back, because that is how the Launcher gets it.
+    using var package = ModPackage.Open(path);
+    Runner.AreEqual(1, package.Manifest.Scenarios.Count, "the rule survives the round trip");
+    Runner.AreEqual("farm", package.Manifest.Scenarios[0].Victory.Conditions[0].Counter,
+        "with its counter intact");
 });
 
 runner.Test("a sprite knows its seasonal twins", () =>

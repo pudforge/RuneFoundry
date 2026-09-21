@@ -54,7 +54,86 @@ public static class ScenarioValidator
         Check(findings, rules.Victory, map, localPlayer, "won");
         Check(findings, rules.Defeat, map, localPlayer, "lost");
 
+        foreach (var finding in CheckOpeningSurvives(map))
+            findings.Add(finding);
+
         return findings;
+    }
+
+    /// <summary>Unit types that stand on the map as a building, gathered from the counters.</summary>
+    private static readonly HashSet<byte> BuildingTypes = CollectBuildings();
+
+    private static HashSet<byte> CollectBuildings()
+    {
+        var types = new HashSet<byte>();
+        foreach (var counter in CounterCatalog.All)
+            if (counter.IsBuilding)
+                foreach (var type in counter.UnitTypes)
+                    types.Add(type);
+
+        // Not a counter of its own, but it stands on the map like a building. Counting it
+        // here can only make the check below quieter, which is the safe direction.
+        types.Add(CircleOfPower);
+        return types;
+    }
+
+    /// <summary>
+    /// The three kinds the game subtracts before asking whether you still have an army:
+    /// Flying Machines and Zeppelins, Transports, and Oil Tankers. The same three
+    /// <see cref="ScenarioEvaluator"/> subtracts when mirroring the check at 0x004F4316.
+    /// </summary>
+    private static readonly HashSet<byte> UncountedTypes = new()
+    {
+        0x28, 0x29,  // Flying Machine / Goblin Zeppelin
+        0x1C, 0x1D,  // Transports
+        0x1A, 0x1B,  // Oil Tankers
+    };
+
+    /// <summary>
+    /// Whether the game will end the mission in defeat before a rule of the author's is
+    /// ever consulted.
+    ///
+    /// <para>
+    /// Every condition function calls the common defeat check first, and the inert
+    /// objective RuneFoundry installs is literally a jump to it (CUSTOM-SCENARIOS.md §2.4).
+    /// So the game's own "you are out" rule stays live under custom rules and cannot be
+    /// switched off: no buildings, and nothing left that counts as an army once flyers,
+    /// transports and tankers are taken off, and the mission is lost on the first
+    /// evaluation — about a second in, whatever the author wrote.
+    /// </para>
+    ///
+    /// <para>
+    /// This is the one failure that looks exactly like the rules never running, so it is
+    /// worth saying at the only point anybody can act on it. The slot is read from the map
+    /// rather than passed in, and only when there is exactly one human slot: guessing wrong
+    /// would mean crying wolf over a sound mission.
+    /// </para>
+    /// </summary>
+    private static IEnumerable<Finding> CheckOpeningSurvives(PudFile? map)
+    {
+        if (map is null) yield break;
+
+        var humans = CampaignTech.HumanPlayers(map.PlayerOwners);
+        if (humans.Count != 1) yield break;
+
+        var mine = map.Units.Where(u => u.Player == humans[0]).ToList();
+
+        if (mine.Count == 0)
+        {
+            yield return new Finding(FindingLevel.Problem,
+                "This map gives your side nothing to start with, so the game calls the "
+                + "mission lost about a second in, before any rule here is looked at.");
+            yield break;
+        }
+
+        if (mine.Any(u => BuildingTypes.Contains(u.Type))) yield break;
+        if (mine.Any(u => !UncountedTypes.Contains(u.Type))) yield break;
+
+        yield return new Finding(FindingLevel.Problem,
+            "Your side starts with no buildings, and transports, tankers and flying machines "
+            + "do not count as an army. The game's own defeat check still runs under custom "
+            + "rules and cannot be switched off, so it ends this mission about a second in. "
+            + "Give your side a building, or any one other unit, to hold the mission open.");
     }
 
     private static void Check(List<Finding> findings, ConditionSet set, PudFile? map,
@@ -76,15 +155,6 @@ public static class ScenarioValidator
         for (var i = 0; i < set.Nested.Count; i++)
             Check(findings, set.Nested[i], map, localPlayer, $"{what} group {i + 1}");
 
-        // Every condition met at the start means the mission ends on its first tick. Only
-        // asked at the top, because a group being true at the start is ordinary.
-        if (map is not null && !set.IsEmpty && set.Match == Match.All && set.Nested.Count == 0
-            && set.Conditions.All(c => MetAtStart(c, map, localPlayer) == true))
-        {
-            findings.Add(new Finding(FindingLevel.Problem,
-                $"Every {what} condition is already true when the mission starts, so it ends "
-                + "immediately."));
-        }
     }
 
     private static IEnumerable<Finding> CheckOne(Condition condition, PudFile? map,
@@ -115,18 +185,11 @@ public static class ScenarioValidator
         if (condition.Player is { } player && !condition.IsAnyPlayer
             && (player < 0 || player > NeutralPlayer))
             yield return new Finding(FindingLevel.Problem,
-                $"{where} names player {player}. The game has 0 to {NeutralPlayer}.");
+                $"{where} names player {player + 1}. The game has 1 to {NeutralPlayer + 1}.");
 
         if (map is null) yield break;
 
-        // What the map actually starts with, which is the only thing knowable here.
-        if (MetAtStart(condition, map, localPlayer) == true && !condition.Invert)
-        {
-            yield return new Finding(FindingLevel.Warning,
-                $"{where} is already true when the mission starts.");
-        }
-
-        foreach (var finding in CheckReachable(condition, map, localPlayer, where))
+        foreach (var finding in CheckReachable(condition, map, where))
             yield return finding;
     }
 
@@ -138,7 +201,7 @@ public static class ScenarioValidator
     /// mistake from one that can never be met, and both are worth saying out loud.
     /// </summary>
     private static IEnumerable<Finding> CheckReachable(Condition condition, PudFile map,
-                                                       int localPlayer, string where)
+                                                       string where)
     {
         if (condition.Kind is not ConditionKind.Delivered)
         {
@@ -147,18 +210,6 @@ public static class ScenarioValidator
         }
 
         var counter = CounterCatalog.Find(condition.Counter);
-
-        if (condition.Kind == ConditionKind.EnemyHasNone && counter is not null)
-        {
-            var enemies = map.Units.Count(u => u.Player != localPlayer
-                                               && u.Player != NeutralPlayer
-                                               && counter.UnitTypes.Contains(u.Type));
-
-            if (enemies == 0)
-                yield return new Finding(FindingLevel.Warning,
-                    $"{where} waits for the enemy to lose every {counter.Label}, and the map "
-                    + "starts with none. It is true from the first tick.");
-        }
 
         if (condition.Kind == ConditionKind.Delivered)
         {
@@ -181,51 +232,6 @@ public static class ScenarioValidator
                     $"{where} watches a {counter.Label}, and the map has none to watch.");
         }
     }
-
-    /// <summary>
-    /// Whether a condition already holds on the map's opening position.
-    ///
-    /// Null when it cannot be decided from a map alone, which is most kinds: a mission is
-    /// not won at the start by anybody's kill count.
-    /// </summary>
-    private static bool? MetAtStart(Condition condition, PudFile map, int localPlayer)
-    {
-        var player = condition.Player ?? localPlayer;
-
-        bool? met = condition.Kind switch
-        {
-            ConditionKind.OwnCount => CounterCatalog.Find(condition.Counter) is { } c && c.UnitTypes.Count > 0
-                ? Compare(map.Units.Count(u => u.Player == player && c.UnitTypes.Contains(u.Type)),
-                          condition.Op, condition.Count)
-                : null,
-
-            ConditionKind.EnemyHasNone => CounterCatalog.Find(condition.Counter) is { } e && e.UnitTypes.Count > 0
-                ? !map.Units.Any(u => u.Player != localPlayer && u.Player != NeutralPlayer
-                                      && e.UnitTypes.Contains(u.Type))
-                : null,
-
-            ConditionKind.UnitAlive => CounterCatalog.Find(condition.Counter) is { } a && a.UnitTypes.Count > 0
-                ? map.Units.Any(u => a.UnitTypes.Contains(u.Type)
-                                     && (condition.Player is null || u.Player == player))
-                : null,
-
-            // Nobody has killed, razed, delivered or rescued anything yet.
-            ConditionKind.Kills or ConditionKind.Razings
-                or ConditionKind.Delivered or ConditionKind.Rescued
-                => Compare(0, condition.Op, condition.Count),
-
-            _ => null,
-        };
-
-        return met is null ? null : met.Value ^ condition.Invert;
-    }
-
-    private static bool Compare(int actual, Compare op, int wanted) => op switch
-    {
-        Scenarios.Compare.AtLeast => actual >= wanted,
-        Scenarios.Compare.AtMost => actual <= wanted,
-        _ => actual == wanted,
-    };
 
     private static bool NeedsCounter(ConditionKind kind) => kind switch
     {

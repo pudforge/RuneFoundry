@@ -164,17 +164,34 @@ public sealed class ModPackage : IDisposable
                 var info = new FileInfo(pair.Value);
                 if (!info.Exists) throw new FileNotFoundException($"Source file for '{relativePath}' is missing.", pair.Value);
 
+                // A map the mod ships decides its own tech tree, so it leaves here carrying
+                // an ALOW chunk whether or not it arrived with one. Without it the map
+                // silently inherits the build restrictions of whichever campaign mission it
+                // replaces, which belong to a different map. One that already has a chunk is
+                // shipped exactly as its author left it. See PudFile.EnsureAllow.
+                var payload = Formats.PudFile.IsMapPath(relativePath)
+                    ? Formats.PudFile.EnsureAllow(File.ReadAllBytes(pair.Value))
+                    : null;
+
                 var entry = archive.CreateEntry(FilePrefix + relativePath, CompressionLevel.Optimal);
                 using (var target = entry.Open())
-                using (var source = File.OpenRead(pair.Value))
-                    source.CopyTo(target);
+                {
+                    if (payload is not null)
+                        target.Write(payload);
+                    else
+                        using (var source = File.OpenRead(pair.Value)) source.CopyTo(target);
+                }
 
                 byPath.TryGetValue(relativePath, out var existing);
                 entries.Add(new ModFileEntry
                 {
                     Path = relativePath,
-                    Sha256 = Hashing.Sha256File(pair.Value),
-                    Size = info.Length,
+                    // Of what was written, not of what was read: a hash that described the
+                    // source file would fail verification on install for every map.
+                    Sha256 = payload is not null
+                        ? Hashing.Sha256Bytes(payload)
+                        : Hashing.Sha256File(pair.Value),
+                    Size = payload?.Length ?? info.Length,
                     IsNew = existing?.IsNew ?? false,
                     BaseSha256 = existing?.BaseSha256,
                 });

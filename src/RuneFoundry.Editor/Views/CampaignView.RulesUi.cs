@@ -22,6 +22,12 @@ public partial class CampaignView
     private readonly List<GroupRow> _victoryGroups = new();
     private readonly List<GroupRow> _defeatGroups = new();
 
+    // The top-level all-or-any for each set. They used to be pairs of radio buttons, which
+    // meant the fact lived in the visual tree and fired a Checked handler while the XAML
+    // was still loading. Now the only control for it is the word in the gutter.
+    private Match _victoryMatch = Match.All;
+    private Match _defeatMatch = Match.All;
+
     /// <summary>Whether the author has chosen to write the rule themselves.</summary>
     private bool WritingOwnRule => RuleOfMyOwn?.IsChecked == true;
 
@@ -47,15 +53,13 @@ public partial class CampaignView
             foreach (var group in rules.Victory.Nested) _victoryGroups.Add(TrackGroup(GroupRow.From(group, r => Track(r))));
             foreach (var group in rules.Defeat.Nested) _defeatGroups.Add(TrackGroup(GroupRow.From(group, r => Track(r))));
 
-            VictoryAll.IsChecked = rules.Victory.Match == Match.All;
-            VictoryAny.IsChecked = rules.Victory.Match == Match.Any;
-            DefeatAll.IsChecked = rules.Defeat.Match == Match.All;
-            DefeatAny.IsChecked = rules.Defeat.Match == Match.Any;
+            _victoryMatch = rules.Victory.Match;
+            _defeatMatch = rules.Defeat.Match;
         }
         else
         {
-            VictoryAll.IsChecked = true;
-            DefeatAll.IsChecked = true;
+            _victoryMatch = Match.All;
+            _defeatMatch = Match.All;
         }
 
         // The mode follows what is stored rather than what was last clicked, so moving
@@ -81,8 +85,182 @@ public partial class CampaignView
         return group;
     }
 
+    /// <summary>
+    /// Puts the joining word down the left of every list, and wires each one to change the
+    /// match of the set it sits in.
+    ///
+    /// Nothing on the first row of a set, since it is joined to nothing; "and" or "or" on
+    /// every row after it, which is where a reader would reach to change it. A group sits
+    /// after the plain rows of its set, so it leads the set only when there is nothing
+    /// above it, and its own rows are joined by its own match.
+    ///
+    /// Guarded, because every row reports its own changes so a mission saves as it is
+    /// edited, and a word written here is not an edit anybody made. The same guard is what
+    /// stops a change from fanning out: choosing a word on one row sets the match, this
+    /// runs, and every sibling is rewritten while the callbacks are switched off.
+    /// </summary>
+    private void SetJoins()
+    {
+        var was = _loading;
+        _loading = true;
+
+        Apply(_victoryRows, _victoryMatch, ChangeVictory);
+        Apply(_defeatRows, _defeatMatch, ChangeDefeat);
+
+        Lead(_victoryGroups, _victoryMatch, _victoryRows.Count, ChangeVictory);
+        Lead(_defeatGroups, _defeatMatch, _defeatRows.Count, ChangeDefeat);
+
+        foreach (var group in _victoryGroups.Concat(_defeatGroups))
+        {
+            var owner = group;
+            Apply(owner.Rows, owner.Match, m => { owner.Match = m; SetJoins(); SaveRules(); });
+        }
+
+        _loading = was;
+
+        static void Apply(List<ConditionRow> rows, Match match, Action<Match> change)
+        {
+            for (var i = 0; i < rows.Count; i++)
+            {
+                rows[i].SetMatch = null;
+                rows[i].ShowJoin = i > 0;
+                rows[i].JoinChoice = ConditionRow.JoinFor(match);
+                rows[i].SetMatch = change;
+            }
+        }
+
+        static void Lead(List<GroupRow> groups, Match match, int above, Action<Match> change)
+        {
+            for (var i = 0; i < groups.Count; i++)
+            {
+                groups[i].SetMatch = null;
+                groups[i].ShowJoin = i > 0 || above > 0;
+                groups[i].JoinChoice = ConditionRow.JoinFor(match);
+                groups[i].SetMatch = change;
+            }
+        }
+    }
+
+    private void ChangeVictory(Match match)
+    {
+        if (_loading) return;
+        _victoryMatch = match;
+        SetJoins();
+        SaveRules();
+    }
+
+    private void ChangeDefeat(Match match)
+    {
+        if (_loading) return;
+        _defeatMatch = match;
+        SetJoins();
+        SaveRules();
+    }
+
+    /// <summary>
+    /// Everything the rules say about themselves: the whole rule as one sentence, and
+    /// whether the starters are still on offer.
+    ///
+    /// Run after any change, from the rebuild and from the save. Guarded the same way as
+    /// SetJoins and for the same reason: a row reports what is written to it, and none of
+    /// this is an edit.
+    /// </summary>
+    private void Describe()
+    {
+        if (VictorySentence is null) return;
+
+        var was = _loading;
+        _loading = true;
+
+        var won = Clause(_victoryRows, _victoryGroups, _victoryMatch);
+        VictorySentence.Text = won.Length == 0
+            ? "Nothing decides a win yet. Add a condition, or start from one of these."
+            : "You win when " + won + ".";
+
+        var lost = Clause(_defeatRows, _defeatGroups, _defeatMatch);
+        DefeatSentence.Text = lost.Length == 0
+            ? "You lose by the game's own rule: when you have nothing left."
+            : "You lose when " + lost + ".";
+
+        VictoryStarters.Visibility = won.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        DefeatStarters.Visibility = lost.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        _loading = was;
+    }
+
+    /// <summary>
+    /// Rows and groups as one clause. "and" or "or" between them by the set's match; a
+    /// group reads as "either A or B" or "both A and B", which is the bracket said aloud.
+    /// </summary>
+    private static string Clause(List<ConditionRow> rows, List<GroupRow> groups, Match match)
+    {
+        var parts = rows.Select(r => r.Summary).Where(t => t.Length > 0).ToList();
+
+        foreach (var group in groups)
+        {
+            var inner = group.Rows.Select(r => r.Summary).Where(t => t.Length > 0).ToList();
+            if (inner.Count == 0) continue;
+
+            var word = group.Match == Match.Any ? " or " : " and ";
+            var lead = inner.Count < 2 ? ""
+                : group.Match == Match.Any ? "either "
+                : inner.Count == 2 ? "both " : "all of ";
+
+            parts.Add(lead + string.Join(word, inner));
+        }
+
+        return string.Join(match == Match.Any ? ", or " : ", and ", parts);
+    }
+
+    /// <summary>
+    /// A rule people write often, filled in with one click so that the first thing on the
+    /// card is something that works, and the author edits from there.
+    /// </summary>
+    private void OnStarter(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null || _project is null || (sender as FrameworkElement)?.Tag is not string which) return;
+
+        ConditionRow Row(ConditionKind kind, string? counter = null, Compare op = Compare.AtLeast, int count = 1) =>
+            Track(ConditionRow.From(new RuneFoundry.Core.Scenarios.Condition(kind, null, counter, op, count)));
+
+        switch (which)
+        {
+            case "raze":
+                _victoryRows.Add(Row(ConditionKind.EnemyHasNone, "buildings"));
+                break;
+            case "outpost":
+                _victoryRows.Add(Row(ConditionKind.OwnCount, "farm", count: 4));
+                _victoryRows.Add(Row(ConditionKind.OwnCount, "barracks"));
+                _victoryMatch = Match.All;
+                break;
+            case "circle":
+                _victoryRows.Add(Row(ConditionKind.Delivered, count: 4));
+                break;
+            case "kills":
+                _victoryRows.Add(Row(ConditionKind.Kills, count: 20));
+                break;
+            case "hall":
+                _defeatRows.Add(Row(ConditionKind.OwnCount, "townhall", Compare.AtMost, 0));
+                break;
+        }
+
+        RefreshRuleLists();
+        SaveRules();
+    }
+
     private void RefreshRuleLists()
     {
+        // The all-or-any buttons raise Checked as the XAML sets them, which happens while
+        // InitializeComponent is still running and before any of these fields is assigned.
+        // Anything reached from that handler has to survive being called against a view
+        // that does not exist yet.
+        // Every one of them, not just the first: the fields are assigned as their elements
+        // are created, so the earlier lists exist while the later ones are still null.
+        if (VictoryList is null || DefeatList is null
+            || VictoryGroups is null || DefeatGroups is null) return;
+
+        SetJoins();
+
         VictoryList.ItemsSource = null;
         VictoryList.ItemsSource = _victoryRows;
 
@@ -94,9 +272,10 @@ public partial class CampaignView
 
         DefeatGroups.ItemsSource = null;
         DefeatGroups.ItemsSource = _defeatGroups;
+
+        Describe();
     }
 
-    private void OnMatchChanged(object sender, RoutedEventArgs e) => SaveRules();
 
     private void OnAddVictoryGroup(object sender, RoutedEventArgs e)
     {
@@ -142,6 +321,14 @@ public partial class CampaignView
 
         OwnRulesPanel.Visibility = own ? Visibility.Visible : Visibility.Collapsed;
         ObjectiveBox.Visibility = own ? Visibility.Collapsed : Visibility.Visible;
+
+        // The three notes under the game's-rule dropdown belong to that mode. Emptied but
+        // left visible, each still took a line and its margin, and the three together were
+        // the blank band that sat above the author's own rules.
+        var notes = own ? Visibility.Collapsed : Visibility.Visible;
+        ObjectiveAlso.Visibility = notes;
+        ObjectiveNeeds.Visibility = notes;
+        ObjectiveWarning.Visibility = notes;
 
         if (own)
         {
@@ -217,11 +404,11 @@ public partial class CampaignView
 
         var rules = new ScenarioRules(
             new ConditionSet(
-                VictoryAny.IsChecked == true ? Match.Any : Match.All,
+                _victoryMatch,
                 _victoryRows.Select(r => r.ToCondition()).ToList(),
                 _victoryGroups.Select(g => g.ToSet()).ToList()),
             new ConditionSet(
-                DefeatAny.IsChecked == true ? Match.Any : Match.All,
+                _defeatMatch,
                 _defeatRows.Select(r => r.ToCondition()).ToList(),
                 _defeatGroups.Select(g => g.ToSet()).ToList()));
 
@@ -229,6 +416,7 @@ public partial class CampaignView
 
         RefreshNotes();
         ShowRuleFindings();
+        Describe();
     }
 
     /// <summary>

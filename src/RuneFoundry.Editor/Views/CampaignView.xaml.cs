@@ -801,135 +801,34 @@ public partial class CampaignView : UserControl
     }
 
     /// <summary>
-    /// Says whether the game holds this mission back, and lets the mod lift it.
+    /// Reports what decides this mission's tech tree. It decides nothing itself.
     ///
-    /// The lifting is done in the mission's own map, not in the running game: the map's
-    /// ALOW chunk is parsed after the campaign masks are seeded, so it has the last word
-    /// (W2R-RE-NOTES §5a). That keeps the whole feature inside a file this mod already
-    /// ships, with nothing to write into the game while it runs.
+    /// The map has the last word: its ALOW chunk is parsed after the executable's campaign
+    /// masks are seeded, so whatever it says is what the mission gets (W2R-RE-NOTES §5a).
+    /// Every map a mod ships is given a chunk on the way into the package, so the campaign
+    /// table never reaches a mission RuneFoundry has touched — see PudFile.EnsureAllow.
     ///
-    /// The checkbox has no stored state — it reads the map. One place to be wrong is
-    /// better than two that can disagree, and replacing the map by hand cannot leave a
-    /// stale tick behind.
+    /// There used to be a checkbox here that wrote the chunk itself. It assumed maps had
+    /// none, which is true of the shipped campaign and false of the custom maps that
+    /// replace them: ticking it overwrote an author's own masks, and unticking it deleted
+    /// them outright and handed the mission back to the campaign table. A map's tech tree
+    /// belongs to whoever made the map, so this only says where it comes from.
     /// </summary>
     private void ShowTech()
     {
         if (_selected is null) return;
 
-        var slot = _selected.Mission.ExeSlot;
-        var stock = _allowedUnits is not null && slot < _allowedUnits.Length ? _allowedUnits[slot] : (uint?)null;
-
         var map = ReadMap();
-        var humans = map is null ? Array.Empty<int>() : CampaignTech.HumanPlayers(map.PlayerOwners).ToArray();
-        var open = map is not null && CampaignTech.OpensEverythingFor(PudFile.ReadAllow(map.Bytes), humans);
+        var allow = map is null ? null : PudFile.ReadAllow(map.Bytes);
 
         TechState.Text = map is null
             ? "This mission's map could not be read."
-            : humans.Length == 0
-                ? "This map has no player slot to open up."
-                : open
-                    ? "This mod's copy of the map lifts the restriction."
-                    : stock is null || CampaignTech.Restricts(stock.Value)
-                        ? "The game holds part of the tech tree back on this mission."
-                        : "The game already allows everything on this mission.";
-
-        _loading = true;
-        TechFree.IsChecked = open;
-        TechFree.IsEnabled = _project is not null && map is not null && humans.Length > 0;
-        _loading = false;
+            : allow is not null
+                ? "This map sets its own build restrictions, and they are what the mission uses."
+                : "This map sets no build restrictions, so everything will be buildable. "
+                  + "Set them in the map to change that.";
     }
 
-    /// <summary>
-    /// Writes — or takes back out — the mission map's ALOW chunk.
-    ///
-    /// Ticking it copies the map into the mod if it is not there already, which is the same
-    /// rule the rest of the editor follows: editing a thing is what pulls it in.
-    /// </summary>
-    private void OnTechFreeChanged(object sender, RoutedEventArgs e)
-    {
-        if (_loading || _selected is null || _project is null) return;
-
-        var free = TechFree.IsChecked == true;
-        var relativePath = _selected.Mission.MapPath;
-
-        try
-        {
-            var map = ReadMap();
-            if (map is null) throw new InvalidOperationException("This mission's map could not be read.");
-
-            var humans = CampaignTech.HumanPlayers(map.PlayerOwners);
-
-            byte[] updated;
-            if (free)
-            {
-                var slot = _selected.Mission.ExeSlot;
-                uint At(CampaignTech.Table table)
-                {
-                    var values = _tech.TryGetValue(table, out var read) ? read : null;
-                    return values is not null && slot < values.Length ? values[slot] : CampaignTech.Everything;
-                }
-
-                updated = PudFile.WriteAllow(map.Bytes, CampaignTech.AllowArrays(
-                    At(CampaignTech.Table.Units), At(CampaignTech.Table.Upgrades),
-                    At(CampaignTech.Table.Spells), humans));
-            }
-            else
-            {
-                updated = PudFile.RemoveAllow(map.Bytes);
-            }
-
-            // Taking the restriction back off can leave the map identical to the game's, in
-            // which case it was only ever in the mod to carry the chunk — so let it go.
-            var stock = _session.StockFile(relativePath);
-            if (!free && stock is not null && File.Exists(stock)
-                && updated.AsSpan().SequenceEqual(File.ReadAllBytes(stock)))
-                _project.RemoveOverride(relativePath);
-            else
-                _project.WriteOverride(relativePath, updated);
-
-            _project.Save();
-
-            // The map is a file, but this is a checkbox: what it toggles is one chunk, and
-            // putting the chunk back is exactly as cheap as taking it out. The map's *bytes*
-            // before the toggle are what gets restored, so a hand-replaced map survives.
-            var mission = _selected.Mission;
-            var before = map.Bytes;
-            var after = updated;
-            var hadOverride = _project.HasOverride(relativePath);
-
-            void Put(byte[] bytes, bool keep)
-            {
-                using (Undo.Quiet())
-                {
-                    var stockPath = _session.StockFile(relativePath);
-                    if (!keep && stockPath is not null && File.Exists(stockPath)
-                        && bytes.AsSpan().SequenceEqual(File.ReadAllBytes(stockPath)))
-                        _project.RemoveOverride(relativePath);
-                    else
-                        _project.WriteOverride(relativePath, bytes);
-
-                    _project.Save();
-                    RefreshNotes();
-                    if (_selected?.Mission == mission) { ShowTech(); RefreshFileStates(); }
-                    OverridesChanged?.Invoke();
-                }
-            }
-
-            Record($"{mission} build restrictions {(free ? "lifted" : "restored")}", mission,
-                   () => Put(after, free), () => Put(before, hadOverride));
-
-            Status?.Invoke(free
-                ? $"{_selected.Mission} can build anything (player {string.Join(", ", humans.Select(h => h + 1))})."
-                : $"{_selected.Mission} keeps the campaign's own tech tree.");
-
-            AfterFileChange();
-        }
-        catch (Exception ex)
-        {
-            Ui.Failed(Owner, "change the tech tree", ex);
-            ShowTech();
-        }
-    }
 
     /// <summary>This mod's copy of the selected mission's map, else the game's own.</summary>
     private MapBytes? ReadMap()

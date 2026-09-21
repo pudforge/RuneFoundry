@@ -7,86 +7,120 @@
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <local:FindingColourConverter x:Key="FindingColour"/>
+        <local:BoolToSpaceConverter x:Key="BoolToSpace"/>
 
-        <!-- One condition. The kind picks what the rest of the row means, so the fields
-             that do not apply are hidden by the row itself rather than greyed. -->
+        <!-- One condition, as one line of a sentence: who, does what, to what, how many.
+             The fields a kind does not use are hidden rather than collapsed, so every row
+             keeps the same columns and a list of them reads as a table.
+
+             Above the row, from the second one on, sits the word joining it to the one
+             before. That word is the set's all-or-any, and it is a dropdown because this is
+             the one place a reader would reach to change it. The first row has no line
+             above it, since it is joined to nothing.
+
+             The remove button is pinned to the right by a star column, so it is where it
+             is whatever the row's width, and never off the edge of a narrower group. -->
         <DataTemplate x:Key="ConditionRow">
-            <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}"
-                    Margin="{StaticResource TightBelow}">
-                <StackPanel>
-                    <!-- One line, read left to right as the sentence below says it:
-                         who, what test, what thing, how many. -->
-                    <StackPanel Orientation="Horizontal">
-                        <ComboBox Width="130" ItemsSource="{Binding Players}" DisplayMemberPath="Label"
-                                  SelectedItem="{Binding Player, Mode=TwoWay}"
-                                  Margin="{StaticResource GapRight}"
-                                  ToolTip="Whose things this counts."/>
+            <StackPanel>
+                <ComboBox Width="64" HorizontalAlignment="Left"
+                          ItemsSource="{Binding Joins}" DisplayMemberPath="Label"
+                          SelectedItem="{Binding JoinChoice, Mode=TwoWay}"
+                          Visibility="{Binding ShowJoin, Converter={StaticResource BoolToVis}}"
+                          Margin="0,4,0,4"
+                          ToolTip="Whether every condition in this set has to hold, or any one of them."/>
 
-                        <ComboBox Width="180" ItemsSource="{Binding Kinds}" DisplayMemberPath="Label"
-                                  SelectedItem="{Binding Kind, Mode=TwoWay}"
-                                  Margin="{StaticResource GapRight}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-                        <ComboBox Width="170" ItemsSource="{Binding Counters}" DisplayMemberPath="Label"
-                                  SelectedItem="{Binding Counter, Mode=TwoWay}"
-                                  Visibility="{Binding NeedsCounter, Converter={StaticResource BoolToVis}}"
-                                  Margin="{StaticResource GapRight}"/>
+                    <ComboBox Grid.Column="0" Width="118" ItemsSource="{Binding Players}" DisplayMemberPath="Label"
+                              SelectedItem="{Binding Player, Mode=TwoWay}"
+                              Margin="{StaticResource GapRight}"
+                              ToolTip="Whose things this counts."/>
 
-                        <ComboBox Width="90" ItemsSource="{Binding Comparisons}"
-                                  SelectedItem="{Binding Op, Mode=TwoWay}"
-                                  Visibility="{Binding NeedsCount, Converter={StaticResource BoolToVis}}"
-                                  Margin="{StaticResource GapRight}"/>
+                    <ComboBox Grid.Column="1" Width="164" ItemsSource="{Binding Kinds}" DisplayMemberPath="Label"
+                              SelectedItem="{Binding Kind, Mode=TwoWay}"
+                              Margin="{StaticResource GapRight}"/>
 
-                        <TextBox Width="56" Text="{Binding Count, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 Visibility="{Binding NeedsCount, Converter={StaticResource BoolToVis}}"
-                                 Margin="{StaticResource GapRight}"/>
+                    <!-- Count before the thing: "own at least 4 Farms" is how it is said. -->
+                    <ComboBox Grid.Column="2" Width="92" ItemsSource="{Binding Comparisons}" DisplayMemberPath="Label"
+                              SelectedItem="{Binding OpChoice, Mode=TwoWay}"
+                              Visibility="{Binding NeedsCount, Converter={StaticResource BoolToSpace}}"
+                              Margin="{StaticResource GapRight}"/>
 
-                        <TextBlock Text="of which heroes" VerticalAlignment="Center"
-                                   Visibility="{Binding NeedsHeroes, Converter={StaticResource BoolToVis}}"
-                                   Margin="{StaticResource GapRight}"/>
-                        <TextBox Width="48" Text="{Binding Heroes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 Visibility="{Binding NeedsHeroes, Converter={StaticResource BoolToVis}}"
-                                 Margin="{StaticResource GapRight}"/>
+                    <TextBox Grid.Column="3" Width="52"
+                             Text="{Binding Count, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             Visibility="{Binding NeedsCount, Converter={StaticResource BoolToSpace}}"
+                             Margin="{StaticResource GapRight}"/>
 
-                        <Button Content="Remove" Click="OnRemoveCondition"
-                                Padding="{StaticResource SmallButtonPadding}"/>
-                    </StackPanel>
+                    <ComboBox Grid.Column="4" Width="200" ItemsSource="{Binding Counters}" DisplayMemberPath="Label"
+                              SelectedItem="{Binding Counter, Mode=TwoWay}"
+                              Visibility="{Binding NeedsCounter, Converter={StaticResource BoolToSpace}}"
+                              ToolTip="{Binding Counter.Label}"
+                              Margin="{StaticResource GapRight}"/>
 
-                    <TextBlock Text="{Binding Summary}" Style="{StaticResource Dim}"
-                               FontSize="{StaticResource SmallText}" TextWrapping="Wrap"
-                               Margin="{StaticResource TightAbove}"/>
-                </StackPanel>
-            </Border>
+                    <TextBlock Grid.Column="5" Text="of which heroes" VerticalAlignment="Center"
+                               Visibility="{Binding NeedsHeroes, Converter={StaticResource BoolToVis}}"
+                               Margin="{StaticResource GapRight}"/>
+                    <TextBox Grid.Column="6" Width="48"
+                             Text="{Binding Heroes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             Visibility="{Binding NeedsHeroes, Converter={StaticResource BoolToVis}}"
+                             Margin="{StaticResource GapRight}"/>
+
+                    <Button Grid.Column="8" Content="&#x2715;" Click="OnRemoveCondition"
+                            Padding="{StaticResource SmallButtonPadding}" VerticalAlignment="Center"
+                            ToolTip="Remove this condition"/>
+                </Grid>
+
+            </StackPanel>
         </DataTemplate>
 
         <!-- After ConditionRow on purpose: a StaticResource is resolved as the dictionary
              is read, so a template that names one defined further down throws when it is
              first instantiated. That is at the moment somebody adds a group, not at
              startup, which is the worst place for it to happen. -->
-        <!-- A bracketed group: its own all/any, its own conditions, and a rule around it
-             that reads "this and (that or the other)". Indented and edged so the bracket
-             is visible without drawing one. -->
+        <!-- A bracketed group: a raised panel inside the set, holding rows of its own that
+             are joined by its own all-or-any. Drawn as a panel rather than with a bracket
+             glyph, because a raised box is what a reader already understands as "these
+             belong together" and a parenthesis is what a compiler understands. The word
+             above it joins the whole group to what came before, exactly as a row's does. -->
         <DataTemplate x:Key="GroupBlock">
-            <Border BorderBrush="{DynamicResource Border}" BorderThickness="2,0,0,0"
-                    Margin="{StaticResource IndentTop}" Padding="{StaticResource CardPadding}">
+            <Border Background="{DynamicResource PanelRaised}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="6" Padding="10,8,10,10" Margin="0,4,0,0">
                 <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TightBelow}">
-                        <TextBlock Text="(" FontWeight="SemiBold" VerticalAlignment="Center"
-                                   Margin="{StaticResource TightRight}"/>
-                        <RadioButton Content="all of these" Style="{StaticResource ModeChip}"
-                                     IsChecked="{Binding IsAll, Mode=TwoWay}"/>
-                        <RadioButton Content="any of these" Style="{StaticResource ModeChip}"
-                                     Margin="{StaticResource TightLeft}"
-                                     IsChecked="{Binding IsAny, Mode=TwoWay}"/>
-                        <Button Content="Remove group" Click="OnRemoveGroup"
+                    <!-- The header: the word joining this group to what came before on the
+                         left, and the group's close on the right, where a card keeps it. A
+                         row's close sits inside the card and one step in, so the two are
+                         told apart by where they are, not by what they say. -->
+                    <Grid Margin="{StaticResource TightBelow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ComboBox Grid.Column="0" Width="64"
+                                  ItemsSource="{Binding Joins}" DisplayMemberPath="Label"
+                                  SelectedItem="{Binding JoinChoice, Mode=TwoWay}"
+                                  Visibility="{Binding ShowJoin, Converter={StaticResource BoolToSpace}}"/>
+                        <Button Grid.Column="2" Content="&#x2715;" Click="OnRemoveGroup"
                                 Padding="{StaticResource SmallButtonPadding}"
-                                Margin="{StaticResource GapLeft}"/>
-                    </StackPanel>
+                                ToolTip="Remove this group and everything in it"/>
+                    </Grid>
 
                     <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource ConditionRow}"/>
 
                     <Button Content="Add a condition" Click="OnAddToGroup"
-                            HorizontalAlignment="Left"
-                            Padding="{StaticResource ButtonPadding}"/>
+                            HorizontalAlignment="Left" Margin="{StaticResource TightAbove}"
+                            Padding="{StaticResource SmallButtonPadding}"/>
                 </StackPanel>
             </Border>
         </DataTemplate>
@@ -589,54 +623,74 @@
                                      won by one set of things and lost by another, and the
                                      two are edited apart. -->
                                 <StackPanel x:Name="OwnRulesPanel" Visibility="Collapsed">
-                                    <StackPanel Orientation="Horizontal" Margin="{StaticResource GapBelow}">
-                                        <TextBlock Text="Won when" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center"
-                                                   Margin="{StaticResource GapRight}"/>
-                                        <RadioButton x:Name="VictoryAll" Content="all of these"
-                                                     GroupName="VictoryMatch" Style="{StaticResource ModeChip}"
-                                                     IsChecked="True" Checked="OnMatchChanged"/>
-                                        <RadioButton x:Name="VictoryAny" Content="any of these"
-                                                     GroupName="VictoryMatch" Style="{StaticResource ModeChip}"
-                                                     Margin="{StaticResource TightLeft}" Checked="OnMatchChanged"/>
-                                    </StackPanel>
+                                    <TextBlock Text="Won when" FontWeight="SemiBold"
+                                               Margin="{StaticResource TightBelow}"/>
 
-                                    <ItemsControl x:Name="VictoryList" ItemTemplate="{StaticResource ConditionRow}"/>
-                                    <ItemsControl x:Name="VictoryGroups" ItemTemplate="{StaticResource GroupBlock}"/>
+                                    <!-- The whole rule, read back as one sentence and kept
+                                         current as it is edited. Brackets come out as
+                                         "either ... or", which is the form a person would
+                                         have written it in to begin with. -->
+                                    <TextBlock x:Name="VictorySentence" TextWrapping="Wrap"
+                                               Margin="{StaticResource GapBelow}"/>
 
-                                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TightBelow}">
-                                        <Button Content="Add a condition" Click="OnAddVictory"
-                                                Padding="{StaticResource ButtonPadding}"/>
-                                        <Button Content="Add a group" Click="OnAddVictoryGroup"
-                                                Padding="{StaticResource ButtonPadding}"
-                                                Margin="{StaticResource TightLeft}"
-                                                ToolTip="A bracketed set with its own all or any, for rules like this and (that or the other)."/>
-                                    </StackPanel>
+                                    <!-- Each set is one card: its rows, its groups, then the
+                                         two ways to add to it. A card around the whole set
+                                         is what makes "won" and "lost" read as two things,
+                                         and lets each row be a plain line inside it. -->
+                                    <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}">
+                                        <StackPanel>
+                                            <!-- Rules people write often, one click each, so the
+                                                 first thing on an empty card is something that
+                                                 works and the author edits from there. -->
+                                            <WrapPanel x:Name="VictoryStarters" Margin="{StaticResource GapBelow}">
+                                                <Button Content="Destroy every enemy building" Tag="raze" Click="OnStarter"
+                                                        Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource ButtonGap}"/>
+                                                <Button Content="Build four Farms and a Barracks" Tag="outpost" Click="OnStarter"
+                                                        Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource ButtonGap}"/>
+                                                <Button Content="Bring four units to the Circle of Power" Tag="circle" Click="OnStarter"
+                                                        Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource ButtonGap}"/>
+                                                <Button Content="Kill twenty enemy units" Tag="kills" Click="OnStarter"
+                                                        Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource ButtonGap}"/>
+                                            </WrapPanel>
+
+                                            <ItemsControl x:Name="VictoryList" ItemTemplate="{StaticResource ConditionRow}"/>
+                                            <ItemsControl x:Name="VictoryGroups" ItemTemplate="{StaticResource GroupBlock}"/>
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                                <Button Content="Add a condition" Click="OnAddVictory"
+                                                        Padding="{StaticResource ButtonPadding}"/>
+                                                <Button Content="Add a group" Click="OnAddVictoryGroup"
+                                                        Padding="{StaticResource ButtonPadding}"
+                                                        Margin="{StaticResource TightLeft}"
+                                                        ToolTip="A bracketed set with its own all or any, for rules like this and (that or the other)."/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
 
                                     <TextBlock Text="Lost when" FontWeight="SemiBold"
                                                Margin="{StaticResource SectionAbove}"/>
-                                    <TextBlock Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}"
-                                               TextWrapping="Wrap" Margin="{StaticResource TightBelow}"
-                                               Text="Leave this empty to keep the game's own defeat rule, which ends the mission when you have nothing left."/>
-                                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TightBelow}">
-                                        <RadioButton x:Name="DefeatAll" Content="all of these"
-                                                     GroupName="DefeatMatch" Style="{StaticResource ModeChip}"
-                                                     IsChecked="True" Checked="OnMatchChanged"/>
-                                        <RadioButton x:Name="DefeatAny" Content="any of these"
-                                                     GroupName="DefeatMatch" Style="{StaticResource ModeChip}"
-                                                     Margin="{StaticResource TightLeft}" Checked="OnMatchChanged"/>
-                                    </StackPanel>
+                                    <TextBlock x:Name="DefeatSentence" TextWrapping="Wrap"
+                                               Margin="{StaticResource GapBelow}"/>
 
-                                    <ItemsControl x:Name="DefeatList" ItemTemplate="{StaticResource ConditionRow}"/>
-                                    <ItemsControl x:Name="DefeatGroups" ItemTemplate="{StaticResource GroupBlock}"/>
+                                    <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}">
+                                        <StackPanel>
+                                            <WrapPanel x:Name="DefeatStarters" Margin="{StaticResource GapBelow}">
+                                                <Button Content="Your Town Hall is lost" Tag="hall" Click="OnStarter"
+                                                        Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource ButtonGap}"/>
+                                            </WrapPanel>
 
-                                    <StackPanel Orientation="Horizontal" Margin="{StaticResource TightBelow}">
-                                        <Button Content="Add a condition" Click="OnAddDefeat"
-                                                Padding="{StaticResource ButtonPadding}"/>
-                                        <Button Content="Add a group" Click="OnAddDefeatGroup"
-                                                Padding="{StaticResource ButtonPadding}"
-                                                Margin="{StaticResource TightLeft}"/>
-                                    </StackPanel>
+                                            <ItemsControl x:Name="DefeatList" ItemTemplate="{StaticResource ConditionRow}"/>
+                                            <ItemsControl x:Name="DefeatGroups" ItemTemplate="{StaticResource GroupBlock}"/>
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                                <Button Content="Add a condition" Click="OnAddDefeat"
+                                                        Padding="{StaticResource ButtonPadding}"/>
+                                                <Button Content="Add a group" Click="OnAddDefeatGroup"
+                                                        Padding="{StaticResource ButtonPadding}"
+                                                        Margin="{StaticResource TightLeft}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
 
                                     <TextBlock Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}"
                                                TextWrapping="Wrap" Margin="{StaticResource SectionAbove}"
@@ -666,16 +720,9 @@
                             <StackPanel>
                                 <TextBlock Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}" Margin="{StaticResource GapBelow}"
                                            TextWrapping="Wrap"
-                                           Text="The game sets each mission's tech tree. Maps cannot change it."/>
+                                           Text="The map decides what can be built on it. Set the allowed units, upgrades and spells in whichever editor you make the map with."/>
 
-                                <TextBlock x:Name="TechState" TextWrapping="Wrap" Margin="{StaticResource GapBelow}"/>
-
-                                <CheckBox x:Name="TechFree" Click="OnTechFreeChanged"
-                                          Content="Override the campaign's default restrictions for this mission"/>
-
-                                <TextBlock Style="{StaticResource Dim}" FontSize="{StaticResource SmallText}" Margin="{StaticResource GapAbove}"
-                                           TextWrapping="Wrap"
-                                           Text="Opens up the tech tree for this mission. Affects your side only."/>
+                                <TextBlock x:Name="TechState" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
 

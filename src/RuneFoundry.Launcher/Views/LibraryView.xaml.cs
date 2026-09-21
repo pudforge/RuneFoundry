@@ -132,27 +132,41 @@ public partial class LibraryView : UserControl
     private void SetStatus(string text) => StatusText.Text = text;
 
     /// <summary>
-    /// Puts the watcher's state on screen.
+    /// Puts what RuneFoundry is doing to the running game on screen, and keeps it there.
     ///
-    /// Three things worth telling apart: not watching at all, watching but this mission has
-    /// no rules, and armed on a named mission. A refusal carries its reason, because "it did
-    /// nothing" without one is the hardest thing to act on.
+    /// Two lines, because two different things happen and either can fail on its own. The
+    /// first is the write into the executable: whether the campaign rules were set, how many,
+    /// or why not. The second is the watcher: whether this mission's own rules are being
+    /// tested right now, and on which slot.
+    ///
+    /// Neither line is hidden once there is something to say. The old row collapsed whenever
+    /// there was no watcher, which is exactly the case somebody needs to see, since a mission
+    /// that ends the moment it opens looks identical whether the rules were never written or
+    /// were written and did not fire. Saying "not applied" out loud is the whole point.
     /// </summary>
     private void ShowWatchState()
     {
+        var patch = _applier.PatchStatus;
+
+        PatchRow.Visibility = patch.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (patch.Length > 0)
+        {
+            PatchText.Text = patch;
+            PatchDot.SetResourceReference(ForegroundProperty, _applier.PatchLevel);
+        }
+
         var watcher = _applier.Watcher;
 
         if (watcher is null)
         {
-            WatchRow.Visibility = Visibility.Collapsed;
+            RuleRow.Visibility = Visibility.Collapsed;
+            WatchRow.Visibility = PatchRow.Visibility;
             return;
         }
 
-        WatchRow.Visibility = Visibility.Visible;
-
         var (text, brush) = watcher.State switch
         {
-            ScenarioState.Armed => ($"Watching this mod's rules for mission {watcher.ArmedSlot}.", "Accent"),
+            ScenarioState.Armed => ($"Mission {watcher.ArmedSlot}: this mod's rules are being tested.", "Accent"),
             ScenarioState.Fired => (watcher.Detail ?? "The mission was decided by this mod's rules.", "Accent"),
             ScenarioState.Watching => ("Watching. This mission has no rules of its own.", "Dim"),
             ScenarioState.Refused => (watcher.Detail ?? "Not watching.", "Warn"),
@@ -161,6 +175,8 @@ public partial class LibraryView : UserControl
 
         WatchText.Text = text;
         WatchDot.SetResourceReference(ForegroundProperty, brush);
+        RuleRow.Visibility = Visibility.Visible;
+        WatchRow.Visibility = Visibility.Visible;
     }
 
     /// <summary>Stops the watcher. Called when the window closes.</summary>

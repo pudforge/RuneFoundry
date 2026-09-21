@@ -99,6 +99,7 @@ public sealed record Condition(
     public const int AnyPlayer = -1;
 
     /// <summary>Whether this condition asks about everybody rather than one player.</summary>
+    [JsonIgnore]
     public bool IsAnyPlayer => Player == AnyPlayer;
 }
 

@@ -54,7 +54,10 @@ try {
     # A copy of what we are about to overwrite, still running, holds its own DLLs open and
     # the delete below fails with a permission error that names clrjit.dll and explains
     # nothing. Say what is actually happening.
-    $running = Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith((Resolve-Path $stage -ErrorAction SilentlyContinue)) }
+    # Resolved once, and only when the folder exists: on a machine that has never packaged
+    # there is nothing to resolve, Resolve-Path returns null, and StartsWith(null) throws.
+    $stagePath = if (Test-Path $stage) { (Resolve-Path $stage).Path } else { $null }
+    $running = if ($stagePath) { Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($stagePath) } } else { @() }
     if ($running) {
         $names = ($running | ForEach-Object { "$($_.ProcessName) (pid $($_.Id))" }) -join ", "
         throw "Close the running programs first: $names. They hold files this build replaces."

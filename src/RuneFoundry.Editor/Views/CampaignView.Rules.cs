@@ -23,21 +23,56 @@ public sealed record RuleChoice(string Label, object? Value)
 /// </summary>
 public sealed class ConditionRow : Observable
 {
+    // The verb of the sentence, and only the verb. "Owns at least" used to be one of
+    // these, which put the words "at least" on screen twice: once here and again in the
+    // comparison beside it. A kind says what is counted, a comparison says how many, and
+    // neither says the other's half.
+    //
+    // Two lists, because "You owns" is the kind of thing that makes a form feel like a
+    // form. The row offers the list that agrees with its player, and swaps when the
+    // player changes without losing which kind was chosen.
     public static readonly IReadOnlyList<RuleChoice> AllKinds = new[]
     {
-        new RuleChoice("Owns at least", ConditionKind.OwnCount),
-        new RuleChoice("Enemy has none", ConditionKind.EnemyHasNone),
-        new RuleChoice("Player is eliminated", ConditionKind.PlayerEliminated),
-        new RuleChoice("A unit is alive", ConditionKind.UnitAlive),
-        new RuleChoice("Brought to the Circle", ConditionKind.Delivered),
-        new RuleChoice("Rescued", ConditionKind.Rescued),
-        new RuleChoice("Resource held", ConditionKind.Resource),
-        new RuleChoice("Units killed", ConditionKind.Kills),
-        new RuleChoice("Buildings razed", ConditionKind.Razings),
+        new RuleChoice("own", ConditionKind.OwnCount),
+        new RuleChoice("face no enemy", ConditionKind.EnemyHasNone),
+        new RuleChoice("are eliminated", ConditionKind.PlayerEliminated),
+        new RuleChoice("still have alive", ConditionKind.UnitAlive),
+        new RuleChoice("have delivered", ConditionKind.Delivered),
+        new RuleChoice("have rescued", ConditionKind.Rescued),
+        new RuleChoice("hold", ConditionKind.Resource),
+        new RuleChoice("have killed", ConditionKind.Kills),
+        new RuleChoice("have razed", ConditionKind.Razings),
     };
 
-    public static readonly IReadOnlyList<Compare> AllComparisons =
-        new[] { Compare.AtLeast, Compare.AtMost, Compare.Exactly };
+    public static readonly IReadOnlyList<RuleChoice> AllKindsThirdPerson = new[]
+    {
+        new RuleChoice("owns", ConditionKind.OwnCount),
+        new RuleChoice("faces no enemy", ConditionKind.EnemyHasNone),
+        new RuleChoice("is eliminated", ConditionKind.PlayerEliminated),
+        new RuleChoice("still has alive", ConditionKind.UnitAlive),
+        new RuleChoice("has delivered", ConditionKind.Delivered),
+        new RuleChoice("has rescued", ConditionKind.Rescued),
+        new RuleChoice("holds", ConditionKind.Resource),
+        new RuleChoice("has killed", ConditionKind.Kills),
+        new RuleChoice("has razed", ConditionKind.Razings),
+    };
+
+    private static IReadOnlyList<RuleChoice> KindsFor(RuleChoice player) =>
+        player.Value is null ? AllKinds : AllKindsThirdPerson;
+
+    private static RuleChoice KindFor(ConditionKind kind, RuleChoice player) =>
+        KindsFor(player).First(k => (ConditionKind)k.Value! == kind);
+
+    /// <summary>
+    /// Worded, because the enum's own names went to the screen unchanged: a dropdown
+    /// reading "AtLeast" is a field name, not something a person would say.
+    /// </summary>
+    public static readonly IReadOnlyList<RuleChoice> AllComparisons = new[]
+    {
+        new RuleChoice("at least", Compare.AtLeast),
+        new RuleChoice("at most", Compare.AtMost),
+        new RuleChoice("exactly", Compare.Exactly),
+    };
 
     /// <summary>
     /// Whose things a condition counts.
@@ -64,10 +99,64 @@ public sealed class ConditionRow : Observable
     private int _heroes;
     private bool _finishedOnly;
 
+    /// <summary>The two words a set can be joined by, as the gutter dropdown offers them.</summary>
+    public static readonly IReadOnlyList<RuleChoice> AllJoins = new[]
+    {
+        new RuleChoice("and", Match.All),
+        new RuleChoice("or", Match.Any),
+    };
+
+    public static RuleChoice JoinFor(Match match) => AllJoins[match == Match.Any ? 1 : 0];
+
+    public IReadOnlyList<RuleChoice> Joins => AllJoins;
+
+    /// <summary>
+    /// The word joining this row to the one above it, and the control for it.
+    ///
+    /// The set's all-or-any used to be a pair of chips above the rows it governed, which is
+    /// the shape of a setting rather than of a sentence. The word now sits in a column down
+    /// the left, so the rows read straight down: this, and this, and this. It is a dropdown
+    /// rather than a label because it is the one place a reader would reach to change it,
+    /// and it is only shown from the second row, since a single row is joined to nothing.
+    ///
+    /// The row does not own the set's match; choosing a word calls back to whoever does.
+    /// </summary>
+    private RuleChoice _joinChoice = AllJoins[0];
+    private bool _showJoin;
+
+    public RuleChoice JoinChoice
+    {
+        get => _joinChoice;
+        set
+        {
+            if (value is null || !Set(ref _joinChoice, value)) return;
+            SetMatch?.Invoke((Match)value.Value!);
+        }
+    }
+
+    public bool ShowJoin
+    {
+        get => _showJoin;
+        set => Set(ref _showJoin, value);
+    }
+
+    /// <summary>Told the set's new match when the gutter word is changed. Set by the view.</summary>
+    public Action<Match>? SetMatch { get; set; }
+
+    /// <summary>
+    /// A new row starts with a counter chosen, not blank. The kind's setter picks one when
+    /// the kind changes, but nothing ran it for the first kind, so a freshly added condition
+    /// opened already failing validation for a reason the author had not caused yet.
+    /// </summary>
+    public ConditionRow()
+    {
+        _counter = Counters.FirstOrDefault();
+    }
+
     // Instance properties, because a template binds to the row rather than to the type.
-    public IReadOnlyList<RuleChoice> Kinds => AllKinds;
+    public IReadOnlyList<RuleChoice> Kinds => KindsFor(Player);
     public IReadOnlyList<RuleChoice> Players => AllPlayers;
-    public IReadOnlyList<Compare> Comparisons => AllComparisons;
+    public IReadOnlyList<RuleChoice> Comparisons => AllComparisons;
 
     public RuleChoice Kind
     {
@@ -100,19 +189,40 @@ public sealed class ConditionRow : Observable
     public RuleChoice Player
     {
         get => _player;
-        set { if (Set(ref _player, value)) Raise(nameof(Summary)); }
+        set
+        {
+            if (!Set(ref _player, value)) return;
+
+            // The verbs change person with the player, so the list is swapped and the same
+            // kind picked again out of the new one, so nothing the author chose is lost.
+            var kind = KindValue;
+            Raise(nameof(Kinds));
+            _kind = KindFor(kind, value);
+            Raise(nameof(Kind));
+            Raise(nameof(Summary));
+        }
     }
 
-    public Compare Op
+    /// <summary>The comparison, as the worded choice the dropdown shows.</summary>
+    public RuleChoice OpChoice
     {
-        get => _op;
-        set { if (Set(ref _op, value)) Raise(nameof(Summary)); }
+        get => AllComparisons.FirstOrDefault(c => (Compare)c.Value! == _op) ?? AllComparisons[0];
+        set
+        {
+            if (value is null || (Compare)value.Value! == _op) return;
+            _op = (Compare)value.Value!;
+            Raise(nameof(OpChoice));
+            Raise(nameof(Summary));
+        }
     }
+
+    /// <summary>The comparison itself, for everything that is not the dropdown.</summary>
+    public Compare Op => _op;
 
     public int Count
     {
         get => _count;
-        set { if (Set(ref _count, value)) Raise(nameof(Summary)); }
+        set { if (Set(ref _count, value)) { Raise(nameof(Summary)); } }
     }
 
     public int Heroes
@@ -153,18 +263,27 @@ public sealed class ConditionRow : Observable
     /// </summary>
     public bool CanBeFinishedOnly => false;
 
-    /// <summary>The rule as a sentence, which is the only check most authors will read.</summary>
+    /// <summary>
+    /// The condition as a clause, with no capital and no full stop, so the view can join
+    /// several into one sentence: "you own at least 4 Farms, and either ... or ...".
+    ///
+    /// A rule read back as English is the only check most authors will ever make on it,
+    /// and it is the check that catches the mistakes a form cannot show: a comparison the
+    /// wrong way round, a count of the wrong thing, a bracket around the wrong pair.
+    /// </summary>
     public string Summary
     {
         get
         {
             var who = Player.Value switch
             {
-                RuneFoundry.Core.Scenarios.Condition.AnyPlayer => "anyone",
-                int p => $"player {p}",
+                RuneFoundry.Core.Scenarios.Condition.AnyPlayer => "any player",
+                int p => $"player {p + 1}",
                 _ => "you",
             };
-            var thing = CounterCatalog.Describe(Counter?.Value as string).ToLowerInvariant();
+            var second = Player.Value is null;
+            var verb = Kind.Label;
+            var thing = Thing();
             var how = Op switch
             {
                 Compare.AtMost => "at most",
@@ -174,21 +293,33 @@ public sealed class ConditionRow : Observable
 
             return KindValue switch
             {
-                ConditionKind.OwnCount =>
-                    $"When {who} {(Player.Value is null ? "own" : "owns")} {how} {Count} {thing}.",
-                ConditionKind.EnemyHasNone => $"When no enemy has a {thing} left.",
-                ConditionKind.PlayerEliminated => $"When {who} {(Player.Value is null ? "have" : "has")} nothing left.",
-                ConditionKind.UnitAlive => $"While {who} still {(Player.Value is null ? "have" : "has")} a {thing}.",
+                ConditionKind.OwnCount => $"{who} {verb} {how} {Count} {thing}",
+                ConditionKind.EnemyHasNone => $"no enemy has a {thing} left",
+                ConditionKind.PlayerEliminated => $"{who} {verb}",
+                ConditionKind.UnitAlive => $"{who} still {(second ? "have" : "has")} a {thing}",
                 ConditionKind.Delivered => Heroes > 0
-                    ? $"When {who} bring {how} {Count} to the Circle, {Heroes} of them heroes."
-                    : $"When {who} bring {how} {Count} to the Circle.",
-                ConditionKind.Rescued => $"When {who} rescue {how} {Count}.",
-                ConditionKind.Resource => $"When {who} hold {how} {Count} {thing}.",
-                ConditionKind.Kills => $"When {who} kill {how} {Count}.",
-                ConditionKind.Razings => $"When {who} raze {how} {Count}.",
+                    ? $"{who} {verb} {how} {Count} to the Circle of Power, {Heroes} of them heroes"
+                    : $"{who} {verb} {how} {Count} to the Circle of Power",
+                ConditionKind.Rescued => $"{who} {verb} {how} {Count}",
+                ConditionKind.Resource => $"{who} {verb} {how} {Count} {thing}",
+                ConditionKind.Kills => $"{who} {verb} {how} {Count}",
+                ConditionKind.Razings => $"{who} {verb} {how} {Count}",
                 _ => "",
             };
         }
+    }
+
+    /// <summary>The counted thing as it reads in a sentence. The two aggregates take the number.</summary>
+    private string Thing()
+    {
+        var label = CounterCatalog.Describe(Counter?.Value as string);
+        var one = Count == 1;
+        return label switch
+        {
+            "Any unit" => one ? "unit" : "units",
+            "Any building" => one ? "building" : "buildings",
+            _ => label,
+        };
     }
 
     public RuneFoundry.Core.Scenarios.Condition ToCondition() => new(
@@ -204,14 +335,14 @@ public sealed class ConditionRow : Observable
     {
         var row = new ConditionRow
         {
-            _kind = AllKinds.FirstOrDefault(k => (ConditionKind)k.Value! == condition.Kind) ?? AllKinds[0],
+            _player = AllPlayers.FirstOrDefault(p => Equals(p.Value, condition.Player)) ?? AllPlayers[0],
             _op = condition.Op,
             _count = condition.Count,
             _heroes = condition.Heroes,
             _finishedOnly = condition.FinishedOnly,
-            _player = AllPlayers.FirstOrDefault(p => Equals(p.Value, condition.Player)) ?? AllPlayers[0],
         };
 
+        row._kind = KindFor(condition.Kind, row._player);
         row._counter = row.Counters.FirstOrDefault(c => (string)c.Value! == condition.Counter)
                        ?? row.Counters.FirstOrDefault();
 
@@ -230,6 +361,31 @@ public sealed class ConditionRow : Observable
 public sealed class GroupRow : Observable
 {
     public List<ConditionRow> Rows { get; } = new();
+
+    /// <summary>The word joining this group to what is above it. See ConditionRow.JoinChoice.</summary>
+    private RuleChoice _joinChoice = ConditionRow.AllJoins[0];
+    private bool _showJoin;
+
+    public IReadOnlyList<RuleChoice> Joins => ConditionRow.AllJoins;
+
+    public RuleChoice JoinChoice
+    {
+        get => _joinChoice;
+        set
+        {
+            if (value is null || !Set(ref _joinChoice, value)) return;
+            SetMatch?.Invoke((Match)value.Value!);
+        }
+    }
+
+    public bool ShowJoin
+    {
+        get => _showJoin;
+        set => Set(ref _showJoin, value);
+    }
+
+    /// <summary>Told the parent set's new match when this group's gutter word changes.</summary>
+    public Action<Match>? SetMatch { get; set; }
 
     private Match _match = Match.Any;
 
@@ -268,6 +424,22 @@ public sealed class GroupRow : Observable
 
         return group;
     }
+}
+
+/// <summary>
+/// True to visible, false to hidden rather than collapsed.
+///
+/// A row hides the fields its kind does not use. Collapsing them takes their width away as
+/// well, so every row of a different kind sat at a different set of positions and no two
+/// lined up. Hidden keeps the space, and the rows read down the page as a table.
+/// </summary>
+public sealed class BoolToSpaceConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value is true ? Visibility.Visible : Visibility.Hidden;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
 }
 
 /// <summary>Paints a finding by how much it matters.</summary>

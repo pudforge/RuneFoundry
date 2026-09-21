@@ -286,16 +286,43 @@ public sealed class ModApplier
         if (CampaignRulesConsent.Ask(_owner, _session.Settings, scenarios.Count > 0)
             != CampaignRulesConsent.Answer.Allow)
         {
-            Say("The mod is applied. Its campaign rules were left alone, as you asked.");
+            // Saying only "left alone" is true and useless. Without the inert objective the
+            // game judges these missions by the rule belonging to whichever campaign slot
+            // they sit in — a rule written for a different map, which on this one is
+            // routinely unwinnable or already lost. Somebody who declines has to be told
+            // that, or they meet it as a mission that ends a second after it starts.
+            if (scenarios.Count > 0)
+                Say($"The mod is applied, but {scenarios.Count} "
+                    + (scenarios.Count == 1 ? "mission" : "missions")
+                    + " in it need rules RuneFoundry was not allowed to set. The game will judge "
+                    + (scenarios.Count == 1 ? "it" : "them")
+                    + " by the original campaign mission's win and lose conditions, which "
+                    + "were written for a different map, so the mission may be impossible "
+                    + "to win, or end the moment it starts. Apply the mod again and allow "
+                    + "campaign rules to play it as its author intended.");
+            else
+                Say("The mod is applied. Its campaign rules were left alone, as you asked.");
+
+            SetPatch(scenarios.Count > 0
+                ? "Campaign rules not applied. These missions use the game's own rules."
+                : "Campaign rules not applied, as you asked.", "Warn");
             return;
         }
 
         Say("Waiting for the game so its victory conditions can be set…");
+        SetPatch("Waiting for Warcraft II to start…", "Dim");
 
         var result = await Task.Run(() =>
             RunningGame.Apply(game, objectives, thresholds, TimeSpan.FromMinutes(3)));
 
         if (result.Message.Length > 0) Say(result.Message);
+
+        SetPatch(result.Applied
+            ? $"Attached to Warcraft II. {result.Changed} campaign "
+              + (result.Changed == 1 ? "rule" : "rules") + " written into the running game."
+            : "Could not set the campaign rules. "
+              + (result.Message.Length > 0 ? result.Message : "The game was not reachable."),
+            result.Applied ? "Accent" : "Warn");
 
         if (scenarios.Count > 0) StartWatching(game, active.Id, scenarios);
     }
@@ -307,6 +334,28 @@ public sealed class ModApplier
 
     /// <summary>Raised whenever the watcher's state changes, for a UI that shows it.</summary>
     public event Action? WatchChanged;
+
+    /// <summary>
+    /// What RuneFoundry has done to the running game, in one line, for the status row.
+    ///
+    /// The campaign rules are the only part of a mod that is not a file on disk: they are
+    /// two words written into a running process, and until now the only trace of that was a
+    /// message that scrolled past while the mod was applying. Someone whose mission ended
+    /// the moment it opened had no way to tell a rule that did not fire from a rule that was
+    /// never written, which is the report this came from. So it is kept here and shown for
+    /// as long as the session lasts.
+    /// </summary>
+    public string PatchStatus { get; private set; } = "";
+
+    /// <summary>Dim, Accent or Warn: which brush the status row should use.</summary>
+    public string PatchLevel { get; private set; } = "Dim";
+
+    private void SetPatch(string text, string level)
+    {
+        PatchStatus = text;
+        PatchLevel = level;
+        WatchChanged?.Invoke();
+    }
 
     /// <summary>
     /// Starts watching the running game for the mod's own rules.
@@ -326,6 +375,7 @@ public sealed class ModApplier
             _watchLock.Dispose();
             _watchLock = null;
             Say("Another RuneFoundry window is already watching this game.");
+            SetPatch("Another RuneFoundry window is watching this game, so this one is not.", "Warn");
             return;
         }
 
@@ -334,6 +384,7 @@ public sealed class ModApplier
         {
             StopWatching();
             Say("The game closed before its rules could be watched.");
+            SetPatch("The game closed before this mod's own rules could be watched.", "Warn");
             return;
         }
 
@@ -343,6 +394,7 @@ public sealed class ModApplier
         {
             StopWatching();
             if (refusal is not null) Say(refusal.Reason);
+            SetPatch(refusal?.Reason ?? "This mod's own rules are not being watched.", "Warn");
             return;
         }
 

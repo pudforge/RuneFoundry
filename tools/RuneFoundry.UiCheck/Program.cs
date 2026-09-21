@@ -859,6 +859,20 @@ internal static class Program
             Shot(window, "campaign");
         }
 
+        // The card as it opens: one of the game's own rules, picked from a list. Scrolled
+        // to first, because the shot is of the whole window and the rules card sits well
+        // below the fold on any mission with a briefing on it.
+        On(() =>
+        {
+            if (view.FindName("RuleFromGame") is System.Windows.Controls.Primitives.ToggleButton stock)
+            {
+                stock.IsChecked = true;
+                stock.BringIntoView();
+            }
+        });
+        Until(() => false, 8);
+        Shot(window, "rules-standard");
+
         // Writing your own mission rule. The mode is a choice on the same card as the
         // game's own rules, and picking it has to reveal somewhere to write them.
         var ownRules = On(() =>
@@ -884,10 +898,13 @@ internal static class Program
                 .OfType<Button>()
                 .FirstOrDefault(b => b.Content as string == "Add a condition");
 
-            if (button is null) return (Rows: -1, Boxes: 0);
+            if (button is null) return (Before: -1, After: -1);
 
+            // Count either side of the click. A mission opened from a real mod already has
+            // rules in it, so the number that means anything is the change, not the total.
+            var before = Items(view.FindName("VictoryList") as ItemsControl).Count;
             button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-            return (Rows: Items(view.FindName("VictoryList") as ItemsControl).Count, Boxes: 0);
+            return (Before: before, After: Items(view.FindName("VictoryList") as ItemsControl).Count);
         });
 
         // The row is generated after the click settles, so the dropdowns need a moment.
@@ -898,7 +915,9 @@ internal static class Program
             .OfType<ComboBox>()
             .Count(b => b.Items.Count > 0));
 
-        Check("adding a condition draws one", added.Rows == 1, $"{added.Rows} rows");
+        Check("adding a condition draws one", added.After == added.Before + 1,
+            added.Before < 0 ? "no Add a condition button"
+                : $"{added.Before} rows became {added.After}");
         Check("and the condition offers its choices", boxes >= 2, $"{boxes} filled dropdowns");
 
         // Adding a group instantiates its template for the first time, which is where a
@@ -955,6 +974,10 @@ internal static class Program
 
         var filled = On(() => Descendants(view.FindName("VictoryGroups") as DependencyObject)
             .OfType<ComboBox>().Count(b => b.Items.Count > 0));
+
+        On(() => (view.FindName("OwnRulesPanel") as FrameworkElement)?.BringIntoView());
+        Until(() => false, 8);
+        Shot(window, "rules-custom");
 
         Check("and a condition inside the group offers its choices", filled >= 2,
             inside < 0 ? "no Add a condition inside the group" : $"{filled} filled dropdowns");

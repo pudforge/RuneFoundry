@@ -20,6 +20,10 @@ public partial class App : Application
             return;
         }
 
+        // Before anything can throw: a window that closes without a word leaves nothing
+        // to fix it with.
+        CrashLog.Watch(this, "");
+
         base.OnStartup(e);
     }
 }

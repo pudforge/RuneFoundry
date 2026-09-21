@@ -261,6 +261,62 @@ public sealed class PudFile
         return result;
     }
 
+    /// <summary>Whether a shipped path is a map, and so decides its own tech tree.</summary>
+    public static bool IsMapPath(string relativePath) =>
+        relativePath.EndsWith(".pud", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Every bit set: nothing held back.</summary>
+    public const uint AllowEverything = 0xFFFFFFFF;
+
+    /// <summary>What the game's own fanout seeds the upgrade state array with.</summary>
+    public const uint AllowUpgradeStateSeed = 0x4020;
+
+    /// <summary>
+    /// Guarantees a map carries an ALOW chunk, so that nothing outside the map decides what
+    /// can be built on it.
+    ///
+    /// <para>
+    /// A campaign mission's tech tree lives in three tables in the executable, and the
+    /// fanout at <c>0x004D2B40</c> seeds the per-player masks from them *before* any chunk
+    /// is read (W2R-RE-NOTES §5a). A map with no ALOW chunk therefore inherits whatever the
+    /// mission slot it happens to occupy allowed — which, for a map replacing a campaign
+    /// mission, means inheriting restrictions written for a different map entirely. That is
+    /// invisible in the editor and impossible to explain from inside the game.
+    /// </para>
+    ///
+    /// <para>
+    /// So every map a mod ships gets one. A map that already carries an ALOW is returned
+    /// untouched: its author has already said what they wanted, and this is not the place to
+    /// second-guess them. A map without one is given the open masks, which is what the game
+    /// itself writes for every game that is not a campaign.
+    /// </para>
+    /// </summary>
+    public static byte[] EnsureAllow(byte[] pud) =>
+        HasAllow(pud) ? pud : WriteAllow(pud, OpenAllowArrays());
+
+    /// <summary>
+    /// Every player allowed everything — the masks the fanout writes when the game is not a
+    /// campaign. The state arrays keep the seeds the fanout uses, so the chunk differs from
+    /// the game's own behaviour in exactly one way: the campaign table is not consulted.
+    /// </summary>
+    public static uint[][] OpenAllowArrays()
+    {
+        var arrays = new uint[AllowArrayCount][];
+        for (var a = 0; a < AllowArrayCount; a++) arrays[a] = new uint[AllowPlayers];
+
+        for (var player = 0; player < AllowPlayers; player++)
+        {
+            arrays[0][player] = 0;                        // unit state
+            arrays[1][player] = AllowEverything;          // units
+            arrays[2][player] = AllowUpgradeStateSeed;    // upgrade state
+            arrays[3][player] = AllowEverything;          // upgrades
+            arrays[4][player] = 0;                        // spell state
+            arrays[5][player] = AllowEverything;          // spells
+        }
+
+        return arrays;
+    }
+
     /// <summary>Takes the chunk out again, giving the mission its campaign masks back.</summary>
     public static byte[] RemoveAllow(byte[] pud)
     {

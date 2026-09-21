@@ -4078,15 +4078,18 @@ runner.Test("the validator reads a rule against the map it will run on", () =>
     var none = ScenarioValidator.Validate(ScenarioRules.Empty, map);
     Runner.IsTrue(none.Any(f => f.Level == FindingLevel.Problem), "no victory rule is a problem");
 
-    // Destroying every enemy Refinery, on a map where nobody has one.
+    // The opening position is not evidence about the mission. A map is edited after the
+    // rules are written, and units arrive and die while it is played, so a rule that is
+    // satisfied on the first tick is not thereby wrong. Nothing here should say it is.
     var refineries = map.Units.Count(u => u.Type is 0x54 or 0x55);
     var noRefinery = ScenarioValidator.Validate(new ScenarioRules(
         new ConditionSet(Match.All, new[] { new Condition(ConditionKind.EnemyHasNone, Counter: "refinery") }),
         ConditionSet.Empty), map);
 
     if (refineries == 0)
-        Runner.IsTrue(noRefinery.Any(f => f.Message.Contains("first tick", StringComparison.Ordinal)),
-            "a rule that is true from the start is called out");
+        Runner.IsTrue(!noRefinery.Any(f => f.Message.Contains("first tick", StringComparison.Ordinal)
+                                           || f.Message.Contains("already true", StringComparison.Ordinal)),
+            "a rule true at the start is left alone, because the map can change");
 
     // A counter this build does not know.
     var unknown = ScenarioValidator.Validate(new ScenarioRules(
@@ -5206,6 +5209,54 @@ runner.Test("the campaign tech tables hold the mission build restrictions", () =
     // found; if that spacing changed, this is no longer the same executable.
     Runner.AreEqual(0x008C1BB8u - 0x008C1AE8u, (uint)(CampaignObjectives.TableAddress - CampaignTech.UnitsAddress),
         "the unit table sits one table ahead of the objectives");
+});
+
+runner.Test("a shipped map always carries its own build restrictions", () =>
+{
+    var game = GameInstall.Detect();
+    if (game is null) { Console.WriteLine("        (skipped)"); return; }
+
+    var vault0 = new BackupVault(BackupVault.DefaultRoot);
+    var stockPath = vault0.StockFile(game, @"Campaign\Human\HUMAN01.PUD");
+    if (!File.Exists(stockPath)) { Console.WriteLine("        (skipped)"); return; }
+
+    var bare = File.ReadAllBytes(stockPath);
+    Runner.IsTrue(!PudFile.HasAllow(bare), "a campaign map ships without one");
+
+    // Without a chunk the mission inherits the executable's masks for whatever slot it
+    // occupies -- restrictions written for a different map. Every shipped map gets one.
+    var given = PudFile.EnsureAllow(bare);
+    var arrays = PudFile.ReadAllow(given);
+    Runner.IsTrue(arrays is not null, "so one is written on the way into the package");
+
+    for (var player = 0; player < PudFile.AllowPlayers; player++)
+    {
+        Runner.AreEqual(PudFile.AllowEverything, arrays![CampaignTech.AllowUnits][player], "every player may build");
+        Runner.AreEqual(PudFile.AllowEverything, arrays[CampaignTech.AllowUpgrades][player], "and research");
+        Runner.AreEqual(PudFile.AllowEverything, arrays[CampaignTech.AllowSpells][player], "and cast");
+    }
+
+    // The seeds have to be the game's own, or the chunk changes more than it means to.
+    Runner.AreEqual(PudFile.AllowUpgradeStateSeed, arrays![CampaignTech.AllowUpgradeState][0],
+        "the upgrade state seed is the game's 0x4020");
+    Runner.AreEqual(0u, arrays[CampaignTech.AllowUnitState][0], "and the other two are zero");
+    Runner.AreEqual(0u, arrays[CampaignTech.AllowSpellState][0], "as the fanout leaves them");
+
+    // The one that matters for a custom map replacing a campaign mission: an author who
+    // set their own restrictions keeps them, byte for byte. Overwriting them is what the
+    // old checkbox did, and it is why the tech tree looked like it ignored the map.
+    var authored = CampaignTech.AllowArrays(0x00000003, 0, 0, new[] { 1 });
+    var byAuthor = PudFile.WriteAllow(bare, authored);
+    var shipped = PudFile.EnsureAllow(byAuthor);
+
+    Runner.IsTrue(shipped.AsSpan().SequenceEqual(byAuthor), "an authored chunk is shipped untouched");
+
+    var read = PudFile.ReadAllow(shipped);
+    Runner.AreEqual(0x00000003u, read![CampaignTech.AllowUnits][0], "the author's mask survives");
+    Runner.AreEqual(CampaignTech.Everything, read[CampaignTech.AllowUnits][1], "for every slot they set");
+
+    // And it is idempotent, so packaging twice cannot drift.
+    Runner.IsTrue(PudFile.EnsureAllow(given).AsSpan().SequenceEqual(given), "writing one twice changes nothing");
 });
 
 runner.Test("an ALOW chunk lifts a mission's build restrictions in the map itself", () =>

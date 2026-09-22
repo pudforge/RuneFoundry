@@ -47,6 +47,33 @@ public sealed class FakeSnapshot : IGameSnapshot
 
     private HashSet<(uint Array, int Player)> Unreadables { get; } = new();
 
+    private readonly List<(byte Type, int Player, bool Dying)> _units = new();
+
+    /// <summary>Whether the unit records cannot be read at all.</summary>
+    public bool UnitsUnreadable { get; set; }
+
+    /// <summary>A loaded map by default; set false to test the load window.</summary>
+    public bool? MapLoaded { get; set; } = true;
+
+    /// <summary>Puts a unit on the fake map.</summary>
+    public FakeSnapshot AddUnit(byte type, int player, bool dying = false)
+    {
+        _units.Add((type, player, dying));
+        return this;
+    }
+
+    /// <summary>Empties the fake map, for simulating a reload between mission runs.</summary>
+    public FakeSnapshot ClearUnits()
+    {
+        _units.Clear();
+        return this;
+    }
+
+    public int? UnitsOfTypes(IReadOnlyList<byte> types, int? player) =>
+        UnitsUnreadable
+            ? null
+            : _units.Count(u => types.Contains(u.Type) && !u.Dying && (player is null || u.Player == player));
+
     public ushort? Counter(uint array, int player)
     {
         if (Unreadables.Contains((array, player))) return null;

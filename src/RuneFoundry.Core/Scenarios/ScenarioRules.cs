@@ -44,6 +44,16 @@ public enum ConditionKind
 
     /// <summary>Buildings razed.</summary>
     Razings,
+
+    /// <summary>
+    /// How many of a named set of unit types a player has alive, found by walking the
+    /// unit records. The set is one exact unit (Grom Hellscream) or a group (Farm / Pig
+    /// Farm, Any building); either way it is one walk and one count. This is the one kind
+    /// the editor offers for "own", and the question the game's own hero rules ask.
+    /// <see cref="OwnCount"/> and <see cref="UnitAlive"/> read the scoreboard counters
+    /// instead and are kept for mods that already carry them.
+    /// </summary>
+    OwnUnits,
 }
 
 /// <summary>How a count is compared with the number the author asked for.</summary>
@@ -149,7 +159,9 @@ public sealed record ScenarioRules(ConditionSet Victory, ConditionSet Defeat)
     /// Bumped when the shape changes in a way an older build cannot read. A mod carrying a
     /// version this build does not know is refused rather than half understood.
     /// </summary>
-    public const int Version = 1;
+    public const int Version = 2;   // 2: TypeAlive. A build without it would read the kind
+                                    // as a number it has no case for, and the rule would
+                                    // never fire; refusing the mod outright is kinder.
 
     public static ScenarioRules Empty { get; } =
         new(ConditionSet.Empty, ConditionSet.Empty);

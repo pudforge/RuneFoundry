@@ -169,6 +169,13 @@ public static class ScenarioEvaluator
                 return Compare((int)held, condition.Op, condition.Count);
             }
 
+            case ConditionKind.OwnUnits:
+            {
+                if (UnitTypeCatalog.TypesOf(condition.Counter) is not { } types) return null;
+                if (game.UnitsOfTypes(types, player) is not { } alive) return null;
+                return Compare(alive, condition.Op, condition.Count);
+            }
+
             default:
                 return null;
         }

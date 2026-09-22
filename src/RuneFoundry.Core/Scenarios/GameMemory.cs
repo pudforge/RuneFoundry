@@ -98,6 +98,21 @@ public sealed class GameMemory : IDisposable
             : null;
     }
 
+    /// <summary>
+    /// Reads bytes at an address the game handed us, with no slide applied: a pointer read
+    /// out of the image already points where it points. For the heap, in practice.
+    /// </summary>
+    public byte[]? BytesAt(long absolute, int count)
+    {
+        if (_closed || absolute <= 0 || count <= 0) return null;
+
+        var buffer = new byte[count];
+        return ReadProcessMemory(_read, new IntPtr(absolute), buffer, count, out var read)
+               && read.ToInt64() == count
+            ? buffer
+            : null;
+    }
+
     public byte? Byte(uint address) => Bytes(address, 1) is { } b ? b[0] : null;
 
     public ushort? Word(uint address) =>
@@ -133,6 +148,30 @@ public sealed class GameMemory : IDisposable
         player < 0 || player >= GameAddresses.PlayerCount
             ? null
             : Dword(array + (uint)(player * 4));
+
+    /// <summary>
+    /// Writes one 16-bit word, slide applied to the address. For the check countdown, which
+    /// is a plain value rather than a code pointer.
+    /// </summary>
+    public bool TryWriteWord(uint address, ushort value)
+    {
+        if (_closed) return false;
+
+        var handle = OpenProcess(ProcessVmWrite | ProcessVmOperation | ProcessQueryInformation,
+                                 false, _pid);
+        if (handle == IntPtr.Zero) return false;
+
+        try
+        {
+            var bytes = BitConverter.GetBytes(value);
+            return WriteProcessMemory(handle, At(address), bytes, 2, out var written)
+                   && written.ToInt64() == 2;
+        }
+        finally
+        {
+            CloseHandle(handle);
+        }
+    }
 
     /// <summary>
     /// Writes one dword, opening a write handle for the moment and closing it again.

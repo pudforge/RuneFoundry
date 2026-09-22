@@ -163,9 +163,12 @@ public static class ScenarioValidator
         // A counter the build does not know is a mod written by a newer version, or a typo.
         if (NeedsCounter(condition.Kind))
         {
-            var known = condition.Kind == ConditionKind.Resource
-                ? ResourceCatalog.Find(condition.Counter) is not null
-                : CounterCatalog.Find(condition.Counter) is not null;
+            var known = condition.Kind switch
+            {
+                ConditionKind.Resource => ResourceCatalog.Find(condition.Counter) is not null,
+                ConditionKind.OwnUnits => UnitTypeCatalog.Find(condition.Counter) is not null,
+                _ => CounterCatalog.Find(condition.Counter) is not null,
+            };
 
             if (!known)
             {
@@ -203,6 +206,22 @@ public static class ScenarioValidator
     private static IEnumerable<Finding> CheckReachable(Condition condition, PudFile map,
                                                        string where)
     {
+        if (condition.Kind == ConditionKind.OwnUnits)
+        {
+            // Only for one exact unit: a group can be built up to later, and saying so
+            // about every Farm rule would be noise. A hero cannot be trained, so a map
+            // that does not start with one is worth a note.
+            if (UnitTypeCatalog.Find(condition.Counter) is not { } unit || unit.UnitTypes.Count != 1) yield break;
+
+            var present = map.Units.Any(u => u.Type == unit.UnitTypes[0]
+                                             && (condition.Player is null || condition.IsAnyPlayer
+                                                 || u.Player == condition.Player));
+            if (!present)
+                yield return new Finding(FindingLevel.Note,
+                    $"{where} counts {unit.Label}, and the map does not start with one.");
+            yield break;
+        }
+
         if (condition.Kind is not ConditionKind.Delivered)
         {
             if (CounterCatalog.Find(condition.Counter) is not { } known) yield break;
@@ -236,7 +255,8 @@ public static class ScenarioValidator
     private static bool NeedsCounter(ConditionKind kind) => kind switch
     {
         ConditionKind.OwnCount or ConditionKind.EnemyHasNone
-            or ConditionKind.UnitAlive or ConditionKind.Resource => true,
+            or ConditionKind.UnitAlive or ConditionKind.Resource
+            or ConditionKind.OwnUnits => true,
         _ => false,
     };
 }

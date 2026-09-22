@@ -4233,6 +4233,63 @@ runner.Test("elimination matches the game's own arithmetic", () =>
         "a tanker and a transport are not an army");
 });
 
+runner.Test("own counts a named set of unit types by walking the records", () =>
+{
+    // The counters lump a hero in with the unit it is built on: Grom Hellscream (0x19)
+    // increments the Grunt counter. "own" walks the unit records instead, for one exact
+    // unit or for a group, and never reads a counter.
+    var grom = UnitTypeCatalog.Find("25")!;
+    Runner.AreEqual("Grom Hellscream", grom.Label, "type 25 is Grom, by the game's own string table");
+    Runner.AreEqual(UnitTypeCatalog.UnitsGroup, grom.Group, "and it is listed under Units");
+
+    var farms = UnitTypeCatalog.Find("farm")!;
+    Runner.AreEqual(UnitTypeCatalog.GroupsGroup, farms.Group, "a counter's name is a group");
+    Runner.IsTrue(farms.UnitTypes.Contains((byte)58) && farms.UnitTypes.Contains((byte)59), "with the counter's own types");
+
+    var buildings = UnitTypeCatalog.Find("buildings")!;
+    Runner.IsTrue(buildings.UnitTypes.Contains((byte)58) && !buildings.UnitTypes.Contains((byte)0), "Any building is every building type");
+    var units = UnitTypeCatalog.Find("units")!;
+    Runner.IsTrue(units.UnitTypes.Contains((byte)0) && !units.UnitTypes.Contains((byte)58), "and Any unit is everything else");
+
+    var alive = new Condition(ConditionKind.OwnUnits, Counter: "25", Count: 1);
+    var fallen = new Condition(ConditionKind.OwnUnits, Counter: "25", Op: Compare.AtMost, Count: 0);
+
+    var grunts = new FakeSnapshot().AddUnit(0x01, 0).AddUnit(0x01, 0).Set(CounterCatalog.Find("grunt")!.Total, 0, 3);
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(alive, grunts, 0), "two grunts are not Grom, whatever the counter says");
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(fallen, grunts, 0), "so with no Grom the fallen rule holds");
+
+    var withGrom = new FakeSnapshot().AddUnit(0x01, 0).AddUnit(0x19, 0);
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(alive, withGrom, 0), "Grom on the map satisfies it");
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(fallen, withGrom, 0), "and the fallen rule does not hold");
+
+    // A group is the same walk over more types.
+    var twoFarms = new FakeSnapshot().AddUnit(58, 0).AddUnit(59, 0).AddUnit(0x19, 0);
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(new Condition(ConditionKind.OwnUnits, Counter: "farm", Count: 2), twoFarms, 0),
+        "a Farm and a Pig Farm are two of the Farm group");
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(new Condition(ConditionKind.OwnUnits, Counter: "units", Count: 1), twoFarms, 0),
+        "Grom is a unit");
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(new Condition(ConditionKind.OwnUnits, Counter: "units", Count: 2), twoFarms, 0),
+        "and the farms are not");
+
+    // A dying unit does not count, which is the state byte the game's own rule reads.
+    var dying = new FakeSnapshot().AddUnit(0x19, 0, dying: true);
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(alive, dying, 0), "a dying Grom is not alive");
+
+    // Somebody else's Grom is not yours, unless the rule asks about anyone.
+    var theirs = new FakeSnapshot().AddUnit(0x19, 3);
+    Runner.AreEqual(false, ScenarioEvaluator.Evaluate(alive, theirs, 0), "player 4's Grom is not player 1's");
+    Runner.AreEqual(true, ScenarioEvaluator.Evaluate(alive with { Player = RuneFoundry.Core.Scenarios.Condition.AnyPlayer }, theirs, 0),
+        "but anyone's Grom counts for an anyone rule");
+
+    // Records that cannot be read are unknown, never false and never true.
+    var blind = new FakeSnapshot { UnitsUnreadable = true };
+    Runner.AreEqual(null, ScenarioEvaluator.Evaluate(alive, blind, 0), "unreadable records are unknown");
+    Runner.AreEqual(null, ScenarioEvaluator.Evaluate(fallen, blind, 0), "either way round");
+
+    // A mod carrying this kind is refused by a build that predates it.
+    Runner.IsTrue(ScenarioRules.Version >= 2, "the rule format version covers the kind");
+});
+
 runner.Test("a value that cannot be read never satisfies a rule", () =>
 {
     var farm = CounterCatalog.Find("farm")!;
@@ -4266,6 +4323,119 @@ runner.Test("a value that cannot be read never satisfies a rule", () =>
 
     Runner.AreEqual(false, ScenarioEvaluator.Evaluate(ConditionSet.Empty, mixed, 0),
         "an empty set is never met");
+});
+
+runner.Test("the engine seizes a mission the game armed for itself", () =>
+{
+    // The launch-time objective write can lose a race with a quick launch, leaving the
+    // game running its own rule on a slot we own. The watcher must take over rather than
+    // stand back, or the author's rules never fire. Reproduces the intermittent failure
+    // seen live: obj=0000, victory pointer on the game's own condition function.
+    var rules = new Dictionary<int, ScenarioRules>
+    {
+        [1] = new(new ConditionSet(Match.All, new[]
+        {
+            new Condition(ConditionKind.OwnUnits, 6, "peon", Compare.Exactly, 0),
+        }), ConditionSet.Empty),
+    };
+
+    var writes = new List<(uint Addr, uint Val)>();
+    var pokes = new List<(uint Addr, ushort Val)>();
+
+    // The game as the failing run showed it: its own objective, its own condition function.
+    var game = new FakeSnapshot
+    {
+        MissionSlot = 1,
+        ObjectiveState = 0,
+        VictoryFunction = GameAddresses.WinTerminal,   // a real address inside the module
+    };
+    game.AddUnit(0x03, 6);   // player 7 (owner 6) still has a peon, so victory is not yet met
+
+    var engine = new ScenarioEngine(rules, () => game,
+        (a, v) => writes.Add((a, v)), (a, v) => pokes.Add((a, v)));
+
+    engine.Poll();
+    Runner.IsTrue(pokes.Any(p => p.Addr == GameAddresses.ObjectiveState && p.Val == GameAddresses.InertObjective),
+        "it writes the inert objective to seize the mission");
+    Runner.IsTrue(writes.Any(w => w.Addr == GameAddresses.VictoryFunction && w.Val == GameAddresses.InertTerminal),
+        "and parks the victory pointer on the inert check");
+
+    // Now the game reflects the seize; the engine arms and evaluates our rule.
+    game.ObjectiveState = GameAddresses.InertObjective;
+    game.VictoryFunction = GameAddresses.InertTerminal;
+    engine.Poll();
+    Runner.AreEqual(ScenarioState.Armed, engine.State, "the next poll arms on the seized mission");
+});
+
+runner.Test("the engine does not judge a mission until the map has loaded", () =>
+{
+    // On a replay the objective is already ours, so the watcher arms on the first load
+    // frame, before units register. A defeat of "own exactly 0 buildings" would read true
+    // on the empty map and lose the player at once. The gate holds until the map loads.
+    var rules = new Dictionary<int, ScenarioRules>
+    {
+        [1] = new(new ConditionSet(Match.All, new[] { new Condition(ConditionKind.OwnUnits, 6, "peon", Compare.Exactly, 0) }),
+                  new ConditionSet(Match.Any, new[] { new Condition(ConditionKind.OwnUnits, null, "buildings", Compare.Exactly, 0) })),
+    };
+    var fired = new List<bool>();
+
+    var loading = new FakeSnapshot { MissionSlot = 1, MapLoaded = false };
+    var engine = new ScenarioEngine(rules, () => loading);
+    engine.Fired += w => fired.Add(w);
+    engine.Poll(); engine.Poll(); engine.Poll();
+    Runner.AreEqual(0, fired.Count, "a still-loading map is not judged, so no premature defeat");
+
+    var loaded = new FakeSnapshot { MissionSlot = 1 };
+    loaded.AddUnit(58, 0);      // your farm: not zero buildings
+    loaded.AddUnit(0x03, 6);    // player 7 still has a peon: victory not yet met
+    var engine2 = new ScenarioEngine(rules, () => loaded);
+    engine2.Fired += w => fired.Add(w);
+    engine2.Poll(); engine2.Poll();
+    Runner.AreEqual(0, fired.Count, "a loaded map with a building and an enemy peon fires nothing");
+});
+
+runner.Test("the engine re-arms when a won mission is replayed in one process", () =>
+{
+    // Win, advance, come back: if a poll misses the frame between missions the fired latch
+    // stays set and the replay never fires. The reload resets the victory pointer off our
+    // terminal, and that is the signal used to re-arm. No non-playing frame is simulated
+    // here, exactly the case that used to stick.
+    var rules = new Dictionary<int, ScenarioRules>
+    {
+        [1] = new(new ConditionSet(Match.All, new[] { new Condition(ConditionKind.OwnUnits, 6, "peon", Compare.Exactly, 0) }),
+                  ConditionSet.Empty),
+    };
+    var writes = new List<(uint Addr, uint Val)>();
+    var fired = new List<bool>();
+
+    // Loaded map, player 7 has a peon: armed, not yet won.
+    var game = new FakeSnapshot { MissionSlot = 1, ObjectiveState = GameAddresses.InertObjective, VictoryFunction = GameAddresses.InertTerminal };
+    game.AddUnit(0x03, 6);
+    game.AddUnit(58, 0);   // a building, so the map reads loaded
+
+    var engine = new ScenarioEngine(rules, () => game, (a, v) => { writes.Add((a, v)); if (a == GameAddresses.VictoryFunction) game.VictoryFunction = v; });
+    engine.Fired += w => fired.Add(w);
+
+    engine.Poll();   // armed
+    // Player 7's peon dies -> win fires, pointer becomes WIN.
+    game.ClearUnits(); game.AddUnit(58, 0);
+    engine.Poll(); engine.Poll();
+    Runner.AreEqual(1, fired.Count, "the first play wins");
+    Runner.AreEqual(GameAddresses.WinTerminal, game.VictoryFunction, "and the pointer is the WIN terminal");
+
+    // A poll while the win stands: the pointer sits at our terminal for seconds before the
+    // game acts on it, which is when the engine confirms the write landed.
+    engine.Poll();
+    Runner.AreEqual(1, fired.Count, "still one; it does not fire twice while the win stands");
+
+    // The mission reloads for a replay, still slot 1, state never left 3: the game resets
+    // the pointer to inert and player 7 has a peon again.
+    game.VictoryFunction = GameAddresses.InertTerminal;
+    game.ClearUnits(); game.AddUnit(0x03, 6); game.AddUnit(58, 0);
+    engine.Poll();   // must re-arm rather than stay latched
+    game.ClearUnits(); game.AddUnit(58, 0);   // peon killed again
+    engine.Poll(); engine.Poll();
+    Runner.AreEqual(2, fired.Count, "the replay wins too");
 });
 
 runner.Test("the engine arms on a mission and disarms when it ends", () =>

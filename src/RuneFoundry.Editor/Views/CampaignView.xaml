@@ -62,11 +62,27 @@
                              Visibility="{Binding NeedsCount, Converter={StaticResource BoolToSpace}}"
                              Margin="{StaticResource GapRight}"/>
 
+                    <!-- Units, then groups, under headers. Every entry is a set of unit
+                         types and is counted the same way; the header only says how broad
+                         the set is. -->
                     <ComboBox Grid.Column="4" Width="200" ItemsSource="{Binding Counters}" DisplayMemberPath="Label"
                               SelectedItem="{Binding Counter, Mode=TwoWay}"
                               Visibility="{Binding NeedsCounter, Converter={StaticResource BoolToSpace}}"
                               ToolTip="{Binding Counter.Label}"
-                              Margin="{StaticResource GapRight}"/>
+                              Margin="{StaticResource GapRight}">
+                        <ComboBox.ItemContainerStyle>
+                            <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Group}" Value="heading">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
+                                        <Setter Property="Padding" Value="8,8,8,3"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ComboBox.ItemContainerStyle>
+                    </ComboBox>
 
                     <TextBlock Grid.Column="5" Text="of which heroes" VerticalAlignment="Center"
                                Visibility="{Binding NeedsHeroes, Converter={StaticResource BoolToVis}}"
@@ -639,19 +655,6 @@
                                          and lets each row be a plain line inside it. -->
                                     <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}">
                                         <StackPanel>
-                                            <!-- Rules people write often, one click each, so the
-                                                 first thing on an empty card is something that
-                                                 works and the author edits from there. -->
-                                            <WrapPanel x:Name="VictoryStarters" Margin="{StaticResource GapBelow}">
-                                                <Button Content="Destroy every enemy building" Tag="raze" Click="OnStarter"
-                                                        Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource ButtonGap}"/>
-                                                <Button Content="Build four Farms and a Barracks" Tag="outpost" Click="OnStarter"
-                                                        Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource ButtonGap}"/>
-                                                <Button Content="Bring four units to the Circle of Power" Tag="circle" Click="OnStarter"
-                                                        Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource ButtonGap}"/>
-                                                <Button Content="Kill twenty enemy units" Tag="kills" Click="OnStarter"
-                                                        Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource ButtonGap}"/>
-                                            </WrapPanel>
 
                                             <ItemsControl x:Name="VictoryList" ItemTemplate="{StaticResource ConditionRow}"/>
                                             <ItemsControl x:Name="VictoryGroups" ItemTemplate="{StaticResource GroupBlock}"/>
@@ -674,10 +677,6 @@
 
                                     <Border Style="{StaticResource Card}" Padding="{StaticResource CardPadding}">
                                         <StackPanel>
-                                            <WrapPanel x:Name="DefeatStarters" Margin="{StaticResource GapBelow}">
-                                                <Button Content="Your Town Hall is lost" Tag="hall" Click="OnStarter"
-                                                        Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource ButtonGap}"/>
-                                            </WrapPanel>
 
                                             <ItemsControl x:Name="DefeatList" ItemTemplate="{StaticResource ConditionRow}"/>
                                             <ItemsControl x:Name="DefeatGroups" ItemTemplate="{StaticResource GroupBlock}"/>

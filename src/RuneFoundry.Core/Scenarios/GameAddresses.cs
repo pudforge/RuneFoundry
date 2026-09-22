@@ -122,6 +122,51 @@ public static class GameAddresses
     public const uint Transports = 0x0091B78C;
     public const uint Flyers = 0x0091B80C;
 
+    // ---- the unit records (CUSTOM-SCENARIOS.md §3.2) ----------------------------------
+    //
+    // The game's own keep-the-hero rules do not use the counters. XOrc01 (0x004F5700)
+    // walks the unit records for a unit of exact type 0x19 and checks its state byte; so
+    // does XOrc02 for 0x2E, and XHuman11 tallies heroes the same way. Every one of those
+    // is a walk over this array.
+
+    /// <summary>dword. Pointer to the flat array of unit records. A heap address, no slide.</summary>
+    public const uint UnitArray = 0x0091C704;
+
+    /// <summary>dword. How many records the array holds.</summary>
+    public const uint UnitCount = 0x0091BFB8;
+
+    /// <summary>Bytes from one record to the next.</summary>
+    public const int UnitStride = 0x98;
+
+    /// <summary>byte at this offset: the unit type id.</summary>
+    public const int UnitTypeOffset = 0x27;
+
+    /// <summary>byte at this offset: the owning player.</summary>
+    public const int UnitOwnerOffset = 0x2C;
+
+    /// <summary>byte at this offset: state. Any of the low three bits set means dying or removed.</summary>
+    public const int UnitStateOffset = 0x1E;
+
+    /// <summary>The bits of the state byte that mean the unit no longer counts.</summary>
+    public const byte UnitDyingMask = 0x07;
+
+    /// <summary>
+    /// dword[16]. The head of each player's list of live units; a record's next is at
+    /// <see cref="UnitNextOffset"/>. This is the walk the game's own hero rules make, and
+    /// the one that matters: a dead unit is unlinked from here, while its slot in the flat
+    /// array can keep its old bytes until something reuses it.
+    /// </summary>
+    public const uint UnitListHeads = 0x00934848;
+
+    /// <summary>dword at this offset: the next record in the owner's list, or zero.</summary>
+    public const int UnitNextOffset = 0x68;
+
+    /// <summary>
+    /// A count above this is not a unit array, it is a bad read. The game's own maps top out
+    /// in the hundreds; the cap keeps a wrong pointer from turning into a gigabyte read.
+    /// </summary>
+    public const int MaxUnits = 4096;
+
     /// <summary>Players 0 to 15.</summary>
     public const int PlayerCount = 16;
 

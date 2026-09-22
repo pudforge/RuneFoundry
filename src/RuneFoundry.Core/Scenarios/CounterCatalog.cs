@@ -25,6 +25,9 @@ public sealed record Counter(
     IReadOnlyList<byte> UnitTypes)
 {
     public bool IsBuilding { get; init; }
+
+    /// <summary>Which section of a dropdown this belongs in, where one has sections.</summary>
+    public string Group { get; init; } = "";
 }
 
 /// <summary>
@@ -137,6 +140,64 @@ public static class CounterCatalog
 
     /// <summary>The label to show for a stored name, or the name itself if it is unknown.</summary>
     public static string Describe(string? name) => Find(name)?.Label ?? name ?? "";
+}
+
+/// <summary>
+/// Everything "own" can count: every unit by its own name, and every group the game's
+/// counters know, each as a set of unit type ids. One list, because the walk that counts
+/// them does not care whether the set has one member or six.
+///
+/// The key stored in a mod is the type id in decimal for a unit, and the counter's name
+/// for a group, so a rule written against the old counter kinds keeps its key.
+/// </summary>
+public static class UnitTypeCatalog
+{
+    public const string UnitsGroup = "Units";
+    public const string GroupsGroup = "Groups";
+
+    /// <summary>Units first, then groups, in the order the dropdown shows them.</summary>
+    public static readonly IReadOnlyList<Counter> All = BuildAll();
+
+    private static IReadOnlyList<Counter> BuildAll()
+    {
+        var list = new List<Counter>();
+
+        for (var id = 0; id < 110; id++)
+        {
+            if (Formats.DatNames.IsEmptyUnitId(id)) continue;
+            var name = Formats.DatNames.UnitName(id);
+            if (name.StartsWith("Unit ", StringComparison.Ordinal) || name.StartsWith("(", StringComparison.Ordinal)) continue;
+            list.Add(new Counter(id.ToString(), name, 0, null, new[] { (byte)id }) { Group = UnitsGroup });
+        }
+
+        var buildings = new HashSet<byte>();
+        foreach (var counter in CounterCatalog.All)
+            if (counter.IsBuilding)
+                foreach (var type in counter.UnitTypes) buildings.Add(type);
+
+        var everything = list.Select(c => c.UnitTypes[0]).ToList();
+
+        foreach (var counter in CounterCatalog.All)
+        {
+            // The two aggregates have no type list of their own: they are every building,
+            // and everything that is not one.
+            var types = counter.UnitTypes.Count > 0 ? counter.UnitTypes
+                : counter.Name == "buildings" ? everything.Where(buildings.Contains).ToList()
+                : everything.Where(t => !buildings.Contains(t)).ToList();
+            list.Add(new Counter(counter.Name, counter.Label, 0, null, types) { IsBuilding = counter.IsBuilding, Group = GroupsGroup });
+        }
+
+        return list;
+    }
+
+    private static readonly Dictionary<string, Counter> ByName =
+        All.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
+
+    public static Counter? Find(string? name) =>
+        name is not null && ByName.TryGetValue(name, out var counter) ? counter : null;
+
+    /// <summary>The type ids behind a stored key, or null.</summary>
+    public static IReadOnlyList<byte>? TypesOf(string? name) => Find(name)?.UnitTypes;
 }
 
 /// <summary>

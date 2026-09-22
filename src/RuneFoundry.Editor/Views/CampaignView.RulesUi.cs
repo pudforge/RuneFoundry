@@ -158,8 +158,7 @@ public partial class CampaignView
     }
 
     /// <summary>
-    /// Everything the rules say about themselves: the whole rule as one sentence, and
-    /// whether the starters are still on offer.
+    /// Everything the rules say about themselves: the whole rule as one sentence.
     ///
     /// Run after any change, from the rebuild and from the save. Guarded the same way as
     /// SetJoins and for the same reason: a row reports what is written to it, and none of
@@ -174,16 +173,13 @@ public partial class CampaignView
 
         var won = Clause(_victoryRows, _victoryGroups, _victoryMatch);
         VictorySentence.Text = won.Length == 0
-            ? "Nothing decides a win yet. Add a condition, or start from one of these."
+            ? "Nothing decides a win yet. Add a condition."
             : "You win when " + won + ".";
 
         var lost = Clause(_defeatRows, _defeatGroups, _defeatMatch);
         DefeatSentence.Text = lost.Length == 0
             ? "You lose by the game's own rule: when you have nothing left."
             : "You lose when " + lost + ".";
-
-        VictoryStarters.Visibility = won.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        DefeatStarters.Visibility = lost.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
 
         _loading = was;
     }
@@ -212,41 +208,6 @@ public partial class CampaignView
         return string.Join(match == Match.Any ? ", or " : ", and ", parts);
     }
 
-    /// <summary>
-    /// A rule people write often, filled in with one click so that the first thing on the
-    /// card is something that works, and the author edits from there.
-    /// </summary>
-    private void OnStarter(object sender, RoutedEventArgs e)
-    {
-        if (_selected is null || _project is null || (sender as FrameworkElement)?.Tag is not string which) return;
-
-        ConditionRow Row(ConditionKind kind, string? counter = null, Compare op = Compare.AtLeast, int count = 1) =>
-            Track(ConditionRow.From(new RuneFoundry.Core.Scenarios.Condition(kind, null, counter, op, count)));
-
-        switch (which)
-        {
-            case "raze":
-                _victoryRows.Add(Row(ConditionKind.EnemyHasNone, "buildings"));
-                break;
-            case "outpost":
-                _victoryRows.Add(Row(ConditionKind.OwnCount, "farm", count: 4));
-                _victoryRows.Add(Row(ConditionKind.OwnCount, "barracks"));
-                _victoryMatch = Match.All;
-                break;
-            case "circle":
-                _victoryRows.Add(Row(ConditionKind.Delivered, count: 4));
-                break;
-            case "kills":
-                _victoryRows.Add(Row(ConditionKind.Kills, count: 20));
-                break;
-            case "hall":
-                _defeatRows.Add(Row(ConditionKind.OwnCount, "townhall", Compare.AtMost, 0));
-                break;
-        }
-
-        RefreshRuleLists();
-        SaveRules();
-    }
 
     private void RefreshRuleLists()
     {

@@ -9,7 +9,7 @@ using RuneFoundry.UI;
 namespace RuneFoundry.Editor.Views;
 
 /// <summary>A choice in one of the row's dropdowns, with the word the author reads.</summary>
-public sealed record RuleChoice(string Label, object? Value)
+public sealed record RuleChoice(string Label, object? Value, string Group = "")
 {
     public override string ToString() => Label;
 }
@@ -33,10 +33,9 @@ public sealed class ConditionRow : Observable
     // player changes without losing which kind was chosen.
     public static readonly IReadOnlyList<RuleChoice> AllKinds = new[]
     {
-        new RuleChoice("own", ConditionKind.OwnCount),
+        new RuleChoice("own", ConditionKind.OwnUnits),
         new RuleChoice("face no enemy", ConditionKind.EnemyHasNone),
         new RuleChoice("are eliminated", ConditionKind.PlayerEliminated),
-        new RuleChoice("still have alive", ConditionKind.UnitAlive),
         new RuleChoice("have delivered", ConditionKind.Delivered),
         new RuleChoice("have rescued", ConditionKind.Rescued),
         new RuleChoice("hold", ConditionKind.Resource),
@@ -46,10 +45,9 @@ public sealed class ConditionRow : Observable
 
     public static readonly IReadOnlyList<RuleChoice> AllKindsThirdPerson = new[]
     {
-        new RuleChoice("owns", ConditionKind.OwnCount),
+        new RuleChoice("owns", ConditionKind.OwnUnits),
         new RuleChoice("faces no enemy", ConditionKind.EnemyHasNone),
         new RuleChoice("is eliminated", ConditionKind.PlayerEliminated),
-        new RuleChoice("still has alive", ConditionKind.UnitAlive),
         new RuleChoice("has delivered", ConditionKind.Delivered),
         new RuleChoice("has rescued", ConditionKind.Rescued),
         new RuleChoice("holds", ConditionKind.Resource),
@@ -61,7 +59,19 @@ public sealed class ConditionRow : Observable
         player.Value is null ? AllKinds : AllKindsThirdPerson;
 
     private static RuleChoice KindFor(ConditionKind kind, RuleChoice player) =>
-        KindsFor(player).First(k => (ConditionKind)k.Value! == kind);
+        KindsFor(player).FirstOrDefault(k => (ConditionKind)k.Value! == Upgraded(kind))
+        ?? KindsFor(player)[0];
+
+    /// <summary>
+    /// The kind a stored rule is edited as. The two counter kinds and the old keep-alive
+    /// kind all become "own": same keys, one walk. A mod is only rewritten when its author
+    /// saves the mission, so nothing changes under a mod that is merely installed.
+    /// </summary>
+    private static ConditionKind Upgraded(ConditionKind kind) => kind switch
+    {
+        ConditionKind.OwnCount or ConditionKind.UnitAlive => ConditionKind.OwnUnits,
+        _ => kind,
+    };
 
     /// <summary>
     /// Worded, because the enum's own names went to the screen unchanged: a dropdown
@@ -88,7 +98,7 @@ public sealed class ConditionRow : Observable
                 new RuleChoice("Any player", RuneFoundry.Core.Scenarios.Condition.AnyPlayer),
             }
             .Concat(Enumerable.Range(0, GameAddresses.PlayerCount)
-                .Select(i => new RuleChoice($"Player {i}", (object?)i)))
+                .Select(i => new RuleChoice($"Player {i + 1}", (object?)i)))
             .ToList();
 
     private RuleChoice _kind = AllKinds[0];
@@ -150,7 +160,8 @@ public sealed class ConditionRow : Observable
     /// </summary>
     public ConditionRow()
     {
-        _counter = Counters.FirstOrDefault();
+        _counter = Counters.FirstOrDefault(c => (string?)c.Value == "units")
+                   ?? Counters.FirstOrDefault(c => c.Group != Heading);
     }
 
     // Instance properties, because a template binds to the row rather than to the type.
@@ -173,8 +184,9 @@ public sealed class ConditionRow : Observable
             Raise(nameof(NeedsHeroes));
             Raise(nameof(CanBeFinishedOnly));
 
-            if (Counter is not null && !Counters.Contains(Counter)) Counter = Counters.FirstOrDefault();
-            else if (Counter is null) Counter = Counters.FirstOrDefault();
+            if (Counter is null || !Counters.Contains(Counter))
+                Counter = Counters.FirstOrDefault(c => (string?)c.Value == "units")
+                          ?? Counters.FirstOrDefault(c => c.Group != Heading);
 
             Raise(nameof(Summary));
         }
@@ -183,7 +195,11 @@ public sealed class ConditionRow : Observable
     public RuleChoice? Counter
     {
         get => _counter;
-        set { if (Set(ref _counter, value)) { Raise(nameof(CanBeFinishedOnly)); Raise(nameof(Summary)); } }
+        set
+        {
+            if (value is { Group: Heading }) return;   // a heading is not a choice
+            if (Set(ref _counter, value)) { Raise(nameof(CanBeFinishedOnly)); Raise(nameof(Summary)); }
+        }
     }
 
     public RuleChoice Player
@@ -240,13 +256,36 @@ public sealed class ConditionRow : Observable
     public ConditionKind KindValue => (ConditionKind)Kind.Value!;
 
     /// <summary>What this kind can count, which is a different list for a resource.</summary>
-    public IReadOnlyList<RuleChoice> Counters =>
-        KindValue == ConditionKind.Resource
-            ? ResourceCatalog.All.Select(c => new RuleChoice(c.Label, c.Name)).ToList()
-            : CounterCatalog.All.Select(c => new RuleChoice(c.Label, c.Name)).ToList();
+    /// <summary>Marks a row that is a section heading rather than a choice.</summary>
+    public const string Heading = "heading";
+
+    public IReadOnlyList<RuleChoice> Counters => KindValue switch
+    {
+        ConditionKind.Resource => ResourceCatalog.All.Select(c => new RuleChoice(c.Label, c.Name)).ToList(),
+        ConditionKind.OwnUnits => Sectioned(),
+        _ => CounterCatalog.All.Select(c => new RuleChoice(c.Label, c.Name)).ToList(),
+    };
+
+    /// <summary>
+    /// Units, then groups, each under a heading. The headings are rows with no value: drawn
+    /// dim, not selectable, and ignored if something tries to select one. A flat list with
+    /// headings in it works in every ComboBox template; WPF's own grouping did not in this
+    /// one.
+    /// </summary>
+    private static IReadOnlyList<RuleChoice> Sectioned()
+    {
+        var list = new List<RuleChoice>();
+        foreach (var section in new[] { UnitTypeCatalog.UnitsGroup, UnitTypeCatalog.GroupsGroup })
+        {
+            list.Add(new RuleChoice(section, null, Heading));
+            list.AddRange(UnitTypeCatalog.All.Where(c => c.Group == section)
+                .Select(c => new RuleChoice(c.Label, c.Name, c.Group)));
+        }
+        return list;
+    }
 
     public bool NeedsCounter => KindValue is ConditionKind.OwnCount or ConditionKind.EnemyHasNone
-        or ConditionKind.UnitAlive or ConditionKind.Resource;
+        or ConditionKind.UnitAlive or ConditionKind.Resource or ConditionKind.OwnUnits;
 
     public bool NeedsCount => KindValue is not (ConditionKind.PlayerEliminated or ConditionKind.UnitAlive
         or ConditionKind.EnemyHasNone);
@@ -304,6 +343,7 @@ public sealed class ConditionRow : Observable
                 ConditionKind.Resource => $"{who} {verb} {how} {Count} {thing}",
                 ConditionKind.Kills => $"{who} {verb} {how} {Count}",
                 ConditionKind.Razings => $"{who} {verb} {how} {Count}",
+                ConditionKind.OwnUnits => $"{who} {verb} {how} {Count} {thing}",
                 _ => "",
             };
         }
@@ -312,7 +352,9 @@ public sealed class ConditionRow : Observable
     /// <summary>The counted thing as it reads in a sentence. The two aggregates take the number.</summary>
     private string Thing()
     {
-        var label = CounterCatalog.Describe(Counter?.Value as string);
+        var label = KindValue == ConditionKind.OwnUnits
+            ? UnitTypeCatalog.Find(Counter?.Value as string)?.Label ?? ""
+            : CounterCatalog.Describe(Counter?.Value as string);
         var one = Count == 1;
         return label switch
         {
@@ -343,8 +385,15 @@ public sealed class ConditionRow : Observable
         };
 
         row._kind = KindFor(condition.Kind, row._player);
-        row._counter = row.Counters.FirstOrDefault(c => (string)c.Value! == condition.Counter)
-                       ?? row.Counters.FirstOrDefault();
+        if (condition.Kind == ConditionKind.UnitAlive) { row._op = Compare.AtLeast; row._count = 1; }
+        // Keep an unknown key rather than silently resampling to some other unit: a rule
+        // that counts a thing this build does not know should read blank and be flagged by
+        // the validator, not quietly become "own 0 Peasants". Only fall back when there is
+        // no key at all.
+        row._counter = row.Counters.FirstOrDefault(c => (string?)c.Value == condition.Counter)
+                       ?? (string.IsNullOrEmpty(condition.Counter)
+                            ? row.Counters.FirstOrDefault(c => c.Group != Heading)
+                            : new RuleChoice($"(unknown: {condition.Counter})", condition.Counter));
 
         return row;
     }

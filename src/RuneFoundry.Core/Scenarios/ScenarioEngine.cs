@@ -83,6 +83,7 @@ public sealed class ScenarioEngine : IDisposable
     private readonly IReadOnlyDictionary<int, ScenarioRules> _rules;
     private readonly Func<IGameSnapshot?> _look;
     private readonly Action<uint, uint>? _write;
+    private readonly Action<uint, ushort>? _poke;
 
     private CancellationTokenSource? _stopping;
     private Task? _loop;
@@ -91,6 +92,8 @@ public sealed class ScenarioEngine : IDisposable
     private bool _inEpisode;
     private int _episodeSlot = -1;
     private bool _firedThisEpisode;
+    private uint? _firedTerminal;
+    private bool _firedTerminalSeen;
     private int _victoryHeld;
     private int _defeatHeld;
 
@@ -112,11 +115,13 @@ public sealed class ScenarioEngine : IDisposable
     /// </summary>
     public ScenarioEngine(IReadOnlyDictionary<int, ScenarioRules> rules,
                           Func<IGameSnapshot?> look,
-                          Action<uint, uint>? write = null)
+                          Action<uint, uint>? write = null,
+                          Action<uint, ushort>? poke = null)
     {
         _rules = rules;
         _look = look;
         _write = write;
+        _poke = poke;
     }
 
     /// <summary>
@@ -156,7 +161,8 @@ public sealed class ScenarioEngine : IDisposable
 
         var engine = new ScenarioEngine(rules,
             () => memory.IsRunning ? new LiveSnapshot(memory) : null,
-            (address, value) => memory.TryWriteCodePointer(address, value))
+            (address, value) => memory.TryWriteCodePointer(address, value),
+            (address, value) => memory.TryWriteWord(address, value))
         {
             _memory = memory,
         };
@@ -230,7 +236,33 @@ public sealed class ScenarioEngine : IDisposable
             _episodeSlot = slot;
         }
 
-        if (_firedThisEpisode) return;
+        // A mission can be replayed inside one game process: win it, advance, come back.
+        // The episode reset above only fires if a poll catches the brief non-playing frame
+        // or a slot change between the two runs, and advancing-then-returning can slip
+        // between polls, leaving the fired latch set so the replay never re-arms. The
+        // signal that cannot be missed is the game resetting the victory pointer off the
+        // terminal we wrote: when the mission reloads, the pointer leaves our WIN/LOSE and
+        // becomes the game's own again. Treat that as a fresh run and re-arm.
+        if (_firedThisEpisode)
+        {
+            // Confirm our write landed before trusting the pointer to tell us about a
+            // reload: until the game reflects the terminal we wrote, "different" only means
+            // the write is in flight, not that the mission restarted.
+            if (game.VictoryFunction == _firedTerminal) _firedTerminalSeen = true;
+
+            if (_firedTerminalSeen && game.VictoryFunction is { } current && current != _firedTerminal)
+            {
+                _firedThisEpisode = false;
+                _firedTerminal = null;
+                _firedTerminalSeen = false;
+                _victoryHeld = 0;
+                _defeatHeld = 0;
+            }
+            else
+            {
+                return;
+            }
+        }
 
         if (Guard(game) is { } refusal)
         {
@@ -254,6 +286,13 @@ public sealed class ScenarioEngine : IDisposable
             Detail = null;
             Armed?.Invoke(_episodeSlot);
         }
+
+        // Nothing is judged until the map's units have loaded. On a replay the objective
+        // is already ours from the first run, so the watcher arms on the first load frame,
+        // before any unit has registered: every count reads zero, and an "owns exactly 0"
+        // rule fires on the empty map. This is the "lost to my rules on replay" report.
+        // Holding costs a fraction of a second and removes the whole class of it.
+        if (game.MapLoaded != true) return;
 
         // Defeat first. A mission that is both won and lost in the same tick is a mission
         // the author wrote badly, and losing is the safer reading of it.
@@ -285,11 +324,31 @@ public sealed class ScenarioEngine : IDisposable
         if (_episodeSlot < 0 || !_rules.ContainsKey(_episodeSlot))
             return new ScenarioRefusal("This mission has no rules of its own.");
 
-        // The objective id has to be the inert one we wrote. Anything else means the game
-        // is deciding this mission for itself, and stepping in would be a second opinion.
+        // The objective id has to be the inert one. The Launcher writes it before launch,
+        // but a straight-to-mission (quick) launch can load the mission and install the
+        // game's own objective before that write lands, losing a race: OBJ_STATE is then
+        // the game's, and the author's rules never get a vote. This is the intermittent
+        // "nothing fires" reported from quick launch.
+        //
+        // So take it over. When the game has armed its own condition function for a slot we
+        // own, write our inert objective and park the victory pointer on the inert check;
+        // the next poll sees inert and arms. Gating on the pointer being a real condition
+        // function is also what keeps this from seizing mid-load: while the map is still
+        // loading the pointer is garbage, out of range, and we wait rather than act.
         if (game.ObjectiveState != GameAddresses.InertObjective)
+        {
+            if (_write is not null && _poke is not null
+                && game.VictoryFunction is { } seizing
+                && seizing >= GameAddresses.ConditionsLow && seizing < GameAddresses.ConditionsHigh)
+            {
+                _poke(GameAddresses.ObjectiveState, GameAddresses.InertObjective);
+                _write(GameAddresses.VictoryFunction, GameAddresses.InertTerminal);
+                return new ScenarioRefusal("Taking this mission over from the game's own rule…");
+            }
+
             return new ScenarioRefusal(
                 "This mission is using one of the game's own rules, so RuneFoundry is standing back.");
+        }
 
         // And the pointer has to still be where we left it.
         if (game.VictoryFunction is not { } pointer)
@@ -307,6 +366,8 @@ public sealed class ScenarioEngine : IDisposable
         _firedThisEpisode = true;
 
         var terminal = win ? GameAddresses.WinTerminal : GameAddresses.LoseTerminal;
+        _firedTerminal = terminal;
+        _firedTerminalSeen = false;
 
         if (_write is null)
         {
@@ -316,6 +377,12 @@ public sealed class ScenarioEngine : IDisposable
         }
 
         _write(GameAddresses.VictoryFunction, terminal);
+
+        // The game runs its victory check once every 50 ticks, so a win we have just
+        // written waits up to a couple of seconds to take effect. Forcing the countdown to
+        // one makes it run on the very next tick: "kill the unit" becomes "see the victory
+        // screen" with no perceptible lag. After the pointer, so the check finds it in place.
+        _poke?.Invoke(GameAddresses.Countdown, 1);
 
         State = ScenarioState.Fired;
         Detail = win ? "The mission was won by your rules." : "The mission was lost by your rules.";
@@ -329,6 +396,8 @@ public sealed class ScenarioEngine : IDisposable
         _inEpisode = false;
         _episodeSlot = -1;
         _firedThisEpisode = false;
+        _firedTerminal = null;
+        _firedTerminalSeen = false;
         _victoryHeld = 0;
         _defeatHeld = 0;
         ArmedSlot = null;

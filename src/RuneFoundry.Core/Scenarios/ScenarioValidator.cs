@@ -188,7 +188,7 @@ public static class ScenarioValidator
         if (condition.Player is { } player && !condition.IsAnyPlayer
             && (player < 0 || player > NeutralPlayer))
             yield return new Finding(FindingLevel.Problem,
-                $"{where} names player {player + 1}. The game has 1 to {NeutralPlayer + 1}.");
+                $"{where} names {PlayerColors.Label(player)}. The game has players 1 to {NeutralPlayer + 1}.");
 
         if (map is null) yield break;
 

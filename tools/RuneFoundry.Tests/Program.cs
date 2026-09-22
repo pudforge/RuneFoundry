@@ -4438,6 +4438,16 @@ runner.Test("the engine re-arms when a won mission is replayed in one process", 
     Runner.AreEqual(2, fired.Count, "the replay wins too");
 });
 
+runner.Test("a player is named by its Warcraft II colour", () =>
+{
+    Runner.AreEqual("Player 1 (Red)", PlayerColors.Label(0), "slot 0 is Red");
+    Runner.AreEqual("Player 7 (White)", PlayerColors.Label(6), "slot 6 is White");
+    Runner.AreEqual("Player 8 (Yellow)", PlayerColors.Label(7), "slot 7 is Yellow");
+    Runner.AreEqual("Player 9", PlayerColors.Label(8), "past the eight the game paints, no colour");
+    Runner.AreEqual("White", PlayerColors.Of(6), "and the colour alone is available for a sentence");
+    Runner.AreEqual(null, PlayerColors.Of(8), "null past slot 8");
+});
+
 runner.Test("the engine arms on a mission and disarms when it ends", () =>
 {
     var farm = CounterCatalog.Find("farm")!;

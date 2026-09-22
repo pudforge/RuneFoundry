@@ -33,7 +33,7 @@ public static class DatNames
         "Battleship", "Ogre Juggernaught", "(unused 34)", "Deathwing",
         "(unused 36)", "(unused 37)", "Gnomish Submarine", "Giant Turtle",
         "Gnomish Flying Machine", "Goblin Zeppelin", "Gryphon Rider", "Dragon",
-        "Turalyon", "Eye of Kilrogg", "Arthas", "Korgath Bladefist",
+        "Turalyon", "Eye of Kilrogg", "Danath", "Kargath Bladefist",
         "(unused 48)", "Cho'gall", "Lothar", "Gul'dan",
         "Uther Lightbringer", "Zuljin", "(unused 54)", "Skeleton",
         "Daemon", "Critter", "Farm", "Pig Farm",

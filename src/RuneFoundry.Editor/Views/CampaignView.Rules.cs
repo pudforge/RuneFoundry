@@ -33,7 +33,8 @@ public sealed class ConditionRow : Observable
     // player changes without losing which kind was chosen.
     public static readonly IReadOnlyList<RuleChoice> AllKinds = new[]
     {
-        new RuleChoice("own", ConditionKind.OwnUnits),
+        new RuleChoice("own unit", ConditionKind.OwnUnits, "unit"),
+        new RuleChoice("own unit category", ConditionKind.OwnUnits, "category"),
         new RuleChoice("face no enemy", ConditionKind.EnemyHasNone),
         new RuleChoice("are eliminated", ConditionKind.PlayerEliminated),
         new RuleChoice("have delivered", ConditionKind.Delivered),
@@ -45,7 +46,8 @@ public sealed class ConditionRow : Observable
 
     public static readonly IReadOnlyList<RuleChoice> AllKindsThirdPerson = new[]
     {
-        new RuleChoice("owns", ConditionKind.OwnUnits),
+        new RuleChoice("owns unit", ConditionKind.OwnUnits, "unit"),
+        new RuleChoice("owns unit category", ConditionKind.OwnUnits, "category"),
         new RuleChoice("faces no enemy", ConditionKind.EnemyHasNone),
         new RuleChoice("is eliminated", ConditionKind.PlayerEliminated),
         new RuleChoice("has delivered", ConditionKind.Delivered),
@@ -58,8 +60,10 @@ public sealed class ConditionRow : Observable
     private static IReadOnlyList<RuleChoice> KindsFor(RuleChoice player) =>
         player.Value is null ? AllKinds : AllKindsThirdPerson;
 
-    private static RuleChoice KindFor(ConditionKind kind, RuleChoice player) =>
-        KindsFor(player).FirstOrDefault(k => (ConditionKind)k.Value! == Upgraded(kind))
+    private static RuleChoice KindFor(ConditionKind kind, RuleChoice player, bool category = false) =>
+        KindsFor(player).FirstOrDefault(k => (ConditionKind)k.Value! == Upgraded(kind)
+            && (Upgraded(kind) != ConditionKind.OwnUnits || (k.Group == "category") == category))
+        ?? KindsFor(player).FirstOrDefault(k => (ConditionKind)k.Value! == Upgraded(kind))
         ?? KindsFor(player)[0];
 
     /// <summary>
@@ -98,7 +102,7 @@ public sealed class ConditionRow : Observable
                 new RuleChoice("Any player", RuneFoundry.Core.Scenarios.Condition.AnyPlayer),
             }
             .Concat(Enumerable.Range(0, GameAddresses.PlayerCount)
-                .Select(i => new RuleChoice($"Player {i + 1}", (object?)i)))
+                .Select(i => new RuleChoice(PlayerColors.Label(i), (object?)i)))
             .ToList();
 
     private RuleChoice _kind = AllKinds[0];
@@ -160,8 +164,7 @@ public sealed class ConditionRow : Observable
     /// </summary>
     public ConditionRow()
     {
-        _counter = Counters.FirstOrDefault(c => (string?)c.Value == "units")
-                   ?? Counters.FirstOrDefault(c => c.Group != Heading);
+        _counter = Counters.FirstOrDefault();
     }
 
     // Instance properties, because a template binds to the row rather than to the type.
@@ -255,34 +258,25 @@ public sealed class ConditionRow : Observable
 
     public ConditionKind KindValue => (ConditionKind)Kind.Value!;
 
-    /// <summary>What this kind can count, which is a different list for a resource.</summary>
-    /// <summary>Marks a row that is a section heading rather than a choice.</summary>
+    /// <summary>Never a heading now; kept so older callers still compile.</summary>
     public const string Heading = "heading";
 
+    /// <summary>Whether the chosen verb is "own unit category" rather than "own unit".</summary>
+    private bool OwnsCategory => KindValue == ConditionKind.OwnUnits && Kind.Group == "category";
+
+    /// <summary>
+    /// What this kind can count. For the walk, one flat list per verb: every exact unit for
+    /// "own unit", every category for "own unit category". Splitting the verb is what lets
+    /// each list stay flat and short instead of one long list under two headings.
+    /// </summary>
     public IReadOnlyList<RuleChoice> Counters => KindValue switch
     {
         ConditionKind.Resource => ResourceCatalog.All.Select(c => new RuleChoice(c.Label, c.Name)).ToList(),
-        ConditionKind.OwnUnits => Sectioned(),
+        ConditionKind.OwnUnits => UnitTypeCatalog.All
+            .Where(c => c.Group == (OwnsCategory ? UnitTypeCatalog.GroupsGroup : UnitTypeCatalog.UnitsGroup))
+            .Select(c => new RuleChoice(c.Label, c.Name)).ToList(),
         _ => CounterCatalog.All.Select(c => new RuleChoice(c.Label, c.Name)).ToList(),
     };
-
-    /// <summary>
-    /// Units, then groups, each under a heading. The headings are rows with no value: drawn
-    /// dim, not selectable, and ignored if something tries to select one. A flat list with
-    /// headings in it works in every ComboBox template; WPF's own grouping did not in this
-    /// one.
-    /// </summary>
-    private static IReadOnlyList<RuleChoice> Sectioned()
-    {
-        var list = new List<RuleChoice>();
-        foreach (var section in new[] { UnitTypeCatalog.UnitsGroup, UnitTypeCatalog.GroupsGroup })
-        {
-            list.Add(new RuleChoice(section, null, Heading));
-            list.AddRange(UnitTypeCatalog.All.Where(c => c.Group == section)
-                .Select(c => new RuleChoice(c.Label, c.Name, c.Group)));
-        }
-        return list;
-    }
 
     public bool NeedsCounter => KindValue is ConditionKind.OwnCount or ConditionKind.EnemyHasNone
         or ConditionKind.UnitAlive or ConditionKind.Resource or ConditionKind.OwnUnits;
@@ -317,7 +311,7 @@ public sealed class ConditionRow : Observable
             var who = Player.Value switch
             {
                 RuneFoundry.Core.Scenarios.Condition.AnyPlayer => "any player",
-                int p => $"player {p + 1}",
+                int p => PlayerColors.Of(p) is { } colour ? $"player {p + 1} ({colour})" : $"player {p + 1}",
                 _ => "you",
             };
             var second = Player.Value is null;
@@ -343,7 +337,7 @@ public sealed class ConditionRow : Observable
                 ConditionKind.Resource => $"{who} {verb} {how} {Count} {thing}",
                 ConditionKind.Kills => $"{who} {verb} {how} {Count}",
                 ConditionKind.Razings => $"{who} {verb} {how} {Count}",
-                ConditionKind.OwnUnits => $"{who} {verb} {how} {Count} {thing}",
+                ConditionKind.OwnUnits => $"{who} {(second ? "own" : "owns")} {how} {Count} {thing}",
                 _ => "",
             };
         }
@@ -384,7 +378,9 @@ public sealed class ConditionRow : Observable
             _finishedOnly = condition.FinishedOnly,
         };
 
-        row._kind = KindFor(condition.Kind, row._player);
+        var storedIsCategory = UnitTypeCatalog.Find(condition.Counter)?.Group == UnitTypeCatalog.GroupsGroup
+                               || condition.Kind is ConditionKind.OwnCount or ConditionKind.UnitAlive;
+        row._kind = KindFor(condition.Kind, row._player, storedIsCategory);
         if (condition.Kind == ConditionKind.UnitAlive) { row._op = Compare.AtLeast; row._count = 1; }
         // Keep an unknown key rather than silently resampling to some other unit: a rule
         // that counts a thing this build does not know should read blank and be flagged by

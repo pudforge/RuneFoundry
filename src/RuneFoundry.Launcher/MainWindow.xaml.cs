@@ -102,6 +102,9 @@ public partial class MainWindow : Window
                 UseShellExecute = true,
             });
 
+    private async void OnCheckForUpdates(object sender, RoutedEventArgs e)
+        => await UpdateCommand.Run(this, "Launcher");
+
     private void OnOpenSettings(object sender, RoutedEventArgs e)
     {
         var settings = new SettingsWindow(_session) { Owner = this };

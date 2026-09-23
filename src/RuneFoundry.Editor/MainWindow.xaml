@@ -72,6 +72,10 @@
                         <Separator/>
                         <MenuItem Header="_Settings…" Click="OnOpenSettings"/>
                     </MenuItem>
+
+                    <MenuItem Header="_Help">
+                        <MenuItem Header="Check for _updates…" Click="OnCheckForUpdates"/>
+                    </MenuItem>
                 </Menu>
 
                 <TextBlock x:Name="GameBadge" Grid.Column="1" Style="{StaticResource Dim}"

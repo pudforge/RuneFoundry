@@ -5985,6 +5985,107 @@ runner.Test("mods from 0.5.0 and 0.6.0 still load", () =>
     Runner.IsTrue(m060.ScenarioVersion <= ScenarioRules.Version, "and its rules are applied, not refused");
 });
 
+// Trimmed from GitHub's real answer for v0.6.3-alpha.
+const string LatestRelease = """
+{
+  "html_url": "https://github.com/pudforge/RuneFoundry/releases/tag/v0.6.3-alpha",
+  "tag_name": "v0.6.3-alpha", "name": "RuneFoundry 0.6.3-alpha", "body": "Fixes mods that would not load.",
+  "assets": [
+    { "name": "RuneFoundry-0.6.3-alpha.zip", "size": 70367247,
+      "digest": "sha256:bafcf09e72f9fb9a109905bd123fc379fa043db5059b28cac6d0503cb497f2d6",
+      "browser_download_url": "https://github.com/pudforge/RuneFoundry/releases/download/v0.6.3-alpha/RuneFoundry-0.6.3-alpha.zip" },
+    { "name": "RuneFoundry.Editor.0.6.3-alpha.exe", "size": 72035915, "digest": null,
+      "browser_download_url": "https://example/RuneFoundry.Editor.0.6.3-alpha.exe" },
+    { "name": "RuneFoundry.Launcher.0.6.3-alpha.exe", "size": 71908003,
+      "browser_download_url": "https://example/RuneFoundry.Launcher.0.6.3-alpha.exe" }
+  ]
+}
+""";
+
+runner.Test("a release is read from GitHub's answer, and the right download is picked", () =>
+{
+    var release = Updates.ParseRelease(LatestRelease);
+    Runner.AreEqual("0.6.3-alpha", release.Version, "the tag without its v");
+    Runner.AreEqual(3, release.Assets.Count, "every asset");
+    Runner.AreEqual("bafcf09e72f9fb9a109905bd123fc379fa043db5059b28cac6d0503cb497f2d6", release.Assets[0].Sha256, "the digest");
+    Runner.IsTrue(release.Assets[1].Sha256 is null, "a missing digest is no digest");
+
+    var folder = new InstallLayout(@"C:\RF", @"C:\RF\RuneFoundry Editor.exe", IsStandalone: false, "Editor");
+    Runner.AreEqual("RuneFoundry-0.6.3-alpha.zip", Updates.PickAsset(release, folder)!.Name, "a folder install takes the zip");
+
+    var editor = folder with { IsStandalone = true };
+    Runner.AreEqual("RuneFoundry.Editor.0.6.3-alpha.exe", Updates.PickAsset(release, editor)!.Name, "the standalone Editor takes its exe");
+    var launcher = folder with { IsStandalone = true, Program = "Launcher" };
+    Runner.AreEqual("RuneFoundry.Launcher.0.6.3-alpha.exe", Updates.PickAsset(release, launcher)!.Name, "and the Launcher its own");
+});
+
+runner.Test("a standalone exe named after its version is renamed to the new one", () =>
+{
+    Runner.AreEqual(@"C:\d\RuneFoundry Editor 0.6.4-alpha.exe",
+        Updates.StandaloneTarget(@"C:\d\RuneFoundry Editor 0.6.3-alpha.exe", "0.6.3-alpha", "0.6.4-alpha"), "renamed");
+    Runner.AreEqual(@"C:\d\editor.exe",
+        Updates.StandaloneTarget(@"C:\d\editor.exe", "0.6.3-alpha", "0.6.4-alpha"), "a name the user chose is kept");
+});
+
+runner.Test("the update script waits for the program, then replaces the folder", () =>
+{
+    using var sandbox = new Sandbox();
+    var install = Path.Combine(sandbox.Root, "it's installed");   // an apostrophe, to test the quoting
+    var staged = Path.Combine(sandbox.Root, "staged");
+    Directory.CreateDirectory(Path.Combine(install, "sub"));
+    Directory.CreateDirectory(Path.Combine(staged, "sub"));
+    File.WriteAllText(Path.Combine(install, "a.dll"), "old");
+    File.WriteAllText(Path.Combine(install, "sub", "b.dll"), "old");
+    File.WriteAllText(Path.Combine(install, "mine.txt"), "the user's");
+    File.WriteAllText(Path.Combine(staged, "a.dll"), "new");
+    File.WriteAllText(Path.Combine(staged, "sub", "b.dll"), "new");
+
+    // Stands in for the program being updated: the script must not start until it exits.
+    using var program = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+        "powershell.exe", "-NoProfile -Command Start-Sleep -Seconds 2") { CreateNoWindow = true, UseShellExecute = false })!;
+
+    var log = Path.Combine(sandbox.Root, "update.log");
+    var script = UpdateScript.ForFolder(program.Id, staged, install, Path.Combine(install, "none.exe"), log);
+    var scriptPath = Path.Combine(sandbox.Root, "update.ps1");
+    File.WriteAllText(scriptPath, script, new System.Text.UTF8Encoding(true));
+
+    using var run = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+        "powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"") { CreateNoWindow = true, UseShellExecute = false })!;
+    run.WaitForExit(60_000);
+
+    Runner.IsTrue(program.HasExited, "the program had exited before the copy");
+    Runner.AreEqual("Updated.", File.ReadAllText(log).Trim(), "the script reports success");
+    Runner.AreEqual("new", File.ReadAllText(Path.Combine(install, "a.dll")), "top-level file replaced");
+    Runner.AreEqual("new", File.ReadAllText(Path.Combine(install, "sub", "b.dll")), "nested file replaced");
+    Runner.AreEqual("the user's", File.ReadAllText(Path.Combine(install, "mine.txt")), "other files are left alone");
+});
+
+runner.Test("the update script swaps a standalone exe and drops the old name", () =>
+{
+    using var sandbox = new Sandbox();
+    var current = Path.Combine(sandbox.Root, "RuneFoundry Editor 0.6.3-alpha.exe");
+    var target = Path.Combine(sandbox.Root, "RuneFoundry Editor 0.6.4-alpha.exe");
+    var downloaded = Path.Combine(sandbox.Root, "dl.exe");
+    File.WriteAllText(current, "old");
+    File.WriteAllText(downloaded, "new");
+
+    var log = Path.Combine(sandbox.Root, "update.log");
+    // A pid that has already gone: the wait must not hold anything up.
+    var script = UpdateScript.ForStandalone(int.MaxValue - 7, downloaded, current, target, log)
+        .Replace("Start-Relaunch '", "# Start-Relaunch '");   // do not open the fake exe
+    var scriptPath = Path.Combine(sandbox.Root, "update.ps1");
+    File.WriteAllText(scriptPath, script, new System.Text.UTF8Encoding(true));
+
+    using var run = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+        "powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"") { CreateNoWindow = true, UseShellExecute = false })!;
+    run.WaitForExit(60_000);
+
+    Runner.AreEqual("Updated.", File.ReadAllText(log).Trim(), "the script reports success");
+    Runner.AreEqual("new", File.ReadAllText(target), "the new exe is in place");
+    Runner.IsFalse(File.Exists(current), "the old-named exe is gone");
+    Runner.IsFalse(File.Exists(downloaded), "the download was moved, not copied");
+});
+
 runner.Test("release numbers compare on the release, not the tag", () =>
 {
     Runner.AreEqual(0, AppVersion.Compare("0.6.2-alpha", "0.6.2"), "a pre-release tag is the same release");

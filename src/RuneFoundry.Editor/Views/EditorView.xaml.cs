@@ -181,8 +181,24 @@ public partial class EditorView : UserControl
     {
         try
         {
+            // Asked before anything else changes, so declining leaves the editor as it was.
+            // Asked even on the quiet reopen at startup: the file is about to be rewritten.
+            var upgrade = ModProject.CheckUpgrade(path);
+            if (upgrade.NeedsUpgrade && !ConfirmUpgrade(path, upgrade))
+            {
+                SetStatus($"Did not open {Path.GetFileName(path)}. It was left as it was.");
+                return;
+            }
+
             SaveProjectQuietly();
             _project = ModProject.Load(path);
+
+            if (upgrade.NeedsUpgrade)
+            {
+                var backup = _project.CommitUpgrade();
+                SetStatus($"Upgraded {Path.GetFileName(path)} from RuneFoundry {upgrade.FileVersionText}. "
+                          + $"The old file is kept as {Path.GetFileName(backup)}.");
+            }
 
             // A project remembers the install it was authored against, which saves
             // re-picking the folder when a project moves between machines.
@@ -191,13 +207,33 @@ public partial class EditorView : UserControl
 
             RememberProject();
             ShowProject();
-            SetStatus($"Opened {Path.GetFileName(path)}. {_project.EnumerateOverrides().Count} override(s).");
+            if (!upgrade.NeedsUpgrade)
+                SetStatus($"Opened {Path.GetFileName(path)}. {_project.EnumerateOverrides().Count} override(s).");
         }
         catch (Exception ex)
         {
             if (!quiet) Ui.Failed(Owner, "open the project", ex);
             ShowProject();
         }
+    }
+
+    /// <summary>
+    /// Asks before a project from an older release is rewritten in this one's format. The
+    /// original is kept beside it as a .bak, but the author should know the upgraded file
+    /// will no longer open in the release they made it with.
+    /// </summary>
+    private bool ConfirmUpgrade(string path, ProjectUpgradeCheck upgrade)
+    {
+        var changes = upgrade.Steps.Count == 0
+            ? "Nothing in the project changes shape; it is only marked as saved by this version."
+            : "What changes:\n" + string.Join("\n", upgrade.Steps.Select(s => "  • " + s.Summary));
+
+        return Ui.Confirm(Owner, "Upgrade this project?",
+            $"{Path.GetFileName(path)} was last saved by RuneFoundry {upgrade.FileVersionText}. "
+            + $"To open it, this version ({AppVersion.Current}) will upgrade it.\n\n"
+            + changes + "\n\n"
+            + "A copy of the file as it is now is kept beside it. Older versions of "
+            + "RuneFoundry may not read the upgraded project correctly.");
     }
 
     /// <summary>
@@ -3019,7 +3055,7 @@ public partial class EditorView : UserControl
         try
         {
             _project.Save();
-            var manifest = _project.Build(dialog.FileName, _session.Game);
+            var manifest = _project.Build(dialog.FileName, _session.Game, vault: _session.Vault);
             var size = new FileInfo(dialog.FileName).Length;
 
             SetStatus($"Built {Path.GetFileName(dialog.FileName)}. {manifest.Files.Count} file(s), {Ui.FormatBytes(size)}.");
@@ -3121,7 +3157,7 @@ public partial class EditorView : UserControl
             // Hashing and zipping every replaced file. A mod carrying a sprite sheet is a
             // hundred megabytes of it, which is seconds with the window dead otherwise.
             var manifest = await Working.While(Owner, $"Building {_project.Name}…",
-                () => _project.Build(packagePath, _session.Game),
+                () => _project.Build(packagePath, _session.Game, vault: _session.Vault),
                 ex => Ui.Failed(Owner, "build the mod", ex));
 
             if (manifest is null) return;

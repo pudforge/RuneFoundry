@@ -232,6 +232,49 @@ internal static class Program
         });
     }
 
+    /// <summary>
+    /// Captures an open ComboBox's dropdown. The dropdown lives in the Popup's own visual
+    /// tree, which a RenderTargetBitmap of the window misses, so we render the Popup's child
+    /// directly. Doing it this way — rather than grabbing the screen — means the shot does
+    /// not depend on the desktop being unlocked or the window being foreground.
+    /// </summary>
+    private static void ShotPopup(ComboBox combo, string name)
+    {
+        if (shots.Length == 0) return;
+
+        On(() =>
+        {
+            // An open Popup is the root visual of its own top-level HwndSource (a "PopupRoot"),
+            // not part of the owning window's tree. Find that source and render its root, which
+            // works regardless of template part names, screen lock, or window focus.
+            var fe = System.Windows.PresentationSource.CurrentSources
+                .OfType<System.Windows.PresentationSource>()
+                .Select(s => s.RootVisual)
+                .OfType<System.Windows.FrameworkElement>()
+                .FirstOrDefault(r => r.GetType().Name == "PopupRoot");
+            if (fe is null) { Console.WriteLine($"        [{name}] no open popup"); return; }
+
+            fe.UpdateLayout();
+            var width = (int)Math.Ceiling(fe.ActualWidth);
+            var height = (int)Math.Ceiling(fe.ActualHeight);
+            if (width <= 0 || height <= 0) { Console.WriteLine($"        [{name}] popup {width}x{height}"); return; }
+
+            var target = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                width * 2, height * 2, 192, 192,
+                System.Windows.Media.PixelFormats.Pbgra32);
+            target.Render(fe);
+
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(target));
+
+            var path = System.IO.Path.Combine(shots, name + ".png");
+            using var stream = System.IO.File.Create(path);
+            encoder.Save(stream);
+
+            Console.WriteLine($"        wrote {name}.png (popup)");
+        });
+    }
+
     private static List<object> Items(ItemsControl? control) =>
         (control?.ItemsSource as IEnumerable)?.Cast<object>().ToList() ?? new List<object>();
 
@@ -981,6 +1024,23 @@ internal static class Program
 
         Check("and a condition inside the group offers its choices", filled >= 2,
             inside < 0 ? "no Add a condition inside the group" : $"{filled} filled dropdowns");
+
+        // Open the race-grouped unit counter dropdown and capture it.
+        ComboBox? unitCombo = null;
+        On(() =>
+        {
+            unitCombo = Descendants(view.FindName("VictoryList") as DependencyObject)
+                .OfType<ComboBox>()
+                .FirstOrDefault(c => c.Items.OfType<object>().Any(i => i?.ToString()?.Contains("Footman") == true));
+            if (unitCombo is not null) unitCombo.IsDropDownOpen = true;
+        });
+        Until(() => false, 10);
+        if (unitCombo is not null) ShotPopup(unitCombo, "unit-dropdown");
+        On(() =>
+        {
+            foreach (var c in Descendants(view.FindName("VictoryList") as DependencyObject).OfType<ComboBox>())
+                c.IsDropDownOpen = false;
+        });
 
         // Put the mission back the way it was found.
         On(() =>

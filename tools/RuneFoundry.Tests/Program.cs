@@ -5782,6 +5782,218 @@ runner.Test("shortening a script does not drag other scripts' data backwards", (
                       $"of other scripts' data; all {pointedAt.Count} pointers still resolve)");
 });
 
+// A manifest exactly as 0.6.2 wrote them: no builtWith, and a baseSha256 copied from a game
+// folder that already held the mod, so it equals the payload's own hash. Old mods have to go
+// on loading in every later release; add a fixture here whenever the format moves.
+const string Manifest062 = """
+{
+  "schema": 1, "id": "oldmod", "name": "Old Mod", "version": "0.1.0", "author": "someone",
+  "description": "", "website": "", "createdUtc": "2026-09-23T18:00:38Z", "builtAgainst": "C:\\Games",
+  "files": [ { "path": "Rez/ai.bin", "sha256": "823b612d63994d3cacb37d0613ef6fcb5c175e169de0d058dcd8700fec122a29",
+               "size": 4, "isNew": false, "baseSha256": "823b612d63994d3cacb37d0613ef6fcb5c175e169de0d058dcd8700fec122a29" } ],
+  "objectives": {}, "thresholds": { "33": 4097 },
+  "scenarios": { "31": { "Victory": { "Match": 0, "Conditions": [ { "Kind": 9, "Counter": "25", "Op": 0, "Count": 1 } ], "Groups": [] },
+                         "Defeat":  { "Match": 1, "Conditions": [ { "Kind": 2, "Counter": "units", "Op": 1, "Count": 0 } ], "Groups": [] } } },
+  "scenarioVersion": 2, "TotalSize": 4
+}
+""";
+
+runner.Test("a mod from 0.6.2 still loads, and its self-referencing base hash is dropped", () =>
+{
+    var manifest = ModManifest.FromJson(Manifest062);
+    Runner.AreEqual(0, manifest.Validate().Count, "an old mod validates");
+    Runner.AreEqual("", manifest.BuiltWith, "it carries no release stamp");
+    Runner.IsTrue(manifest.IsFromOlderRelease, "and reads as older than this build");
+    Runner.AreEqual(1, manifest.Scenarios.Count, "its rules survive");
+    Runner.IsTrue(manifest.Files[0].BaseSha256 is null, "a base hash equal to the payload is not a base");
+});
+
+runner.Test("a mod from 0.6.2 installs without a warning per file", () =>
+{
+    using var sandbox = new Sandbox();
+    var game = sandbox.CreateGame();
+
+    var project = sandbox.CreateProject("stamped", "Stamped");
+    project.SeedFromGame("Art/unit.png", game);
+    File.WriteAllBytes(project.ResolveContentPath("Art/unit.png"), new byte[] { 7, 7, 7 });
+
+    // Simulate 0.6.2's bug: build once, apply, then build again from the modded folder
+    // without the vault. The second package records the mod as its own base.
+    var first = Path.Combine(sandbox.Root, "first.w2mod");
+    project.Build(first, game);
+    var installer = new ModInstaller(game, sandbox.Vault);
+    installer.AddPackage(first);
+    Runner.IsTrue(installer.Apply().Succeeded, "first apply");
+
+    var stale = project.BuildManifest(game);
+    Runner.AreEqual(Hashing.Sha256File(game.ResolveDataPath("Art/unit.png")), stale.Files[0].BaseSha256,
+        "without the vault the modded folder is hashed as stock");
+
+    var withVault = project.BuildManifest(game, sandbox.Vault);
+    Runner.AreNotEqual(stale.Files[0].BaseSha256, withVault.Files[0].BaseSha256,
+        "with the vault the stock copy is hashed");
+
+    var second = Path.Combine(sandbox.Root, "second.w2mod");
+    var built = project.Build(second, game);
+    Runner.IsTrue(built.Files[0].BaseSha256 is null, "the packager refuses a base equal to the payload");
+});
+
+runner.Test("a package is stamped with the release that built it", () =>
+{
+    using var sandbox = new Sandbox();
+    var game = sandbox.CreateGame();
+    var project = sandbox.CreateProject("stamp", "Stamp");
+    project.SeedFromGame("Art/unit.png", game);
+    File.WriteAllBytes(project.ResolveContentPath("Art/unit.png"), new byte[] { 1 });
+
+    var path = Path.Combine(sandbox.Root, "stamp.w2mod");
+    project.Build(path, game, vault: sandbox.Vault);
+    using var package = ModPackage.Open(path);
+    Runner.AreEqual(AppVersion.Current, package.Manifest.BuiltWith, "builtWith is this release");
+    Runner.IsFalse(package.Manifest.IsFromOlderRelease, "and it is not older than itself");
+});
+
+runner.Test("a mod from a newer release is refused with a reason", () =>
+{
+    var manifest = ModManifest.FromJson(Manifest062.Replace("\"schema\": 1,", "\"schema\": 1, \"builtWith\": \"99.0.0\","));
+    var problems = manifest.Validate();
+    Runner.AreEqual(1, problems.Count, "one problem");
+    Runner.IsTrue(problems[0].Contains("Update RuneFoundry"), "which says what to do: " + problems[0]);
+});
+
+// Project files and mods exactly as each shipped release wrote them, read from the git tags
+// (0.5.0 is commit 8b1dc9c). 0.6.1 and 0.6.2 wrote the same shape; 0.6.1 added the OwnUnits
+// kind (9). Every later release must go on opening all of these.
+const string Project050 = """
+{
+  "schema": 1, "id": "oldproj", "name": "Old Project", "version": "1.0.0", "author": "", "description": "",
+  "website": "", "contentFolder": "content", "previewImage": "", "lastGameRoot": "C:\\Games",
+  "objectives": { "31": 256 }, "thresholds": {}
+}
+""";
+
+const string Project060 = """
+{
+  "schema": 1, "id": "oldproj", "name": "Old Project", "version": "1.0.0", "author": "", "description": "",
+  "website": "", "contentFolder": "Old-content", "previewImage": "", "lastGameRoot": "",
+  "objectives": {}, "thresholds": {},
+  "scenarios": { "4": { "Victory": { "Match": 0, "Conditions": [ { "Kind": 1, "Player": null, "Counter": "buildings", "Op": 0, "Count": 1,
+                         "Heroes": 0, "FinishedOnly": false, "Invert": false, "Latch": false } ],
+                         "Groups": [ { "Match": 1, "Conditions": [ { "Kind": 8, "Counter": null, "Op": 0, "Count": 3 } ], "Groups": [] } ] },
+                        "Defeat": { "Match": 0, "Conditions": [ { "Kind": 2, "Player": 0, "Op": 0, "Count": 1 } ], "Groups": [] } } }
+}
+""";
+
+const string Project062 = """
+{
+  "schema": 1, "id": "oldproj", "name": "Old Project", "version": "1.0.0", "author": "", "description": "",
+  "website": "", "contentFolder": "Old-content", "previewImage": "", "lastGameRoot": "",
+  "objectives": {}, "thresholds": { "33": 4097 },
+  "scenarios": { "33": { "Victory": { "Match": 0, "Conditions": [ { "Kind": 9, "Player": null, "Counter": "25", "Op": 0, "Count": 1,
+                          "Heroes": 1, "FinishedOnly": false, "Invert": false, "Latch": false } ], "Groups": [] },
+                         "Defeat": { "Match": 1, "Conditions": [ { "Kind": 9, "Player": 6, "Counter": "units", "Op": 1, "Count": 0 } ], "Groups": [] } } }
+}
+""";
+
+foreach (var (release, json, scenarios) in new[] { ("0.5.0", Project050, 0), ("0.6.0", Project060, 1), ("0.6.2", Project062, 1) })
+{
+    runner.Test($"a project saved by {release} opens, asks to upgrade, and keeps its work", () =>
+    {
+        using var sandbox = new Sandbox();
+        var path = Path.Combine(sandbox.Root, "old.w2proj");
+        File.WriteAllText(path, json);
+
+        var check = ModProject.CheckUpgrade(path);
+        Runner.IsFalse(check.IsNewerThanEditor, "it is not from the future");
+        Runner.IsTrue(check.NeedsUpgrade, "an unstamped project is offered an upgrade");
+        Runner.AreEqual("0.6.2 or earlier", check.FileVersionText, "and is described as old");
+        Runner.AreEqual(json, File.ReadAllText(path), "checking writes nothing");
+
+        var project = ModProject.Load(path);
+        Runner.AreEqual(json, File.ReadAllText(path), "loading writes nothing either");
+        Runner.AreEqual(scenarios, project.Scenarios.Count, "its rules survive");
+
+        var backup = project.CommitUpgrade();
+        Runner.AreEqual(json, File.ReadAllText(backup), "the backup is the file as it was");
+        Runner.IsFalse(ModProject.CheckUpgrade(path).NeedsUpgrade, "once upgraded it is not asked again");
+
+        var reopened = ModProject.Load(path);
+        Runner.AreEqual(AppVersion.Current, reopened.EditorVersion, "the stamp is this release");
+        Runner.AreEqual(project.ContentFolder, reopened.ContentFolder, "content folder kept");
+        Runner.AreEqual(project.Objectives.Count, reopened.Objectives.Count, "objectives kept");
+        foreach (var (slot, rules) in project.Scenarios)
+            Runner.AreEqual(
+                System.Text.Json.JsonSerializer.Serialize(rules),
+                System.Text.Json.JsonSerializer.Serialize(reopened.ScenarioFor(slot)),
+                $"slot {slot}'s rules round-trip");
+    });
+}
+
+runner.Test("a project from a newer editor is refused, and left alone", () =>
+{
+    using var sandbox = new Sandbox();
+    var path = Path.Combine(sandbox.Root, "future.w2proj");
+    var json = Project062.Replace("\"schema\": 1,", "\"schema\": 1, \"editorVersion\": \"99.0.0\",");
+    File.WriteAllText(path, json);
+
+    Runner.IsTrue(ModProject.CheckUpgrade(path).IsNewerThanEditor, "seen as newer");
+    Runner.IsFalse(ModProject.CheckUpgrade(path).NeedsUpgrade, "and not offered a downgrade");
+    string? message = null;
+    try { ModProject.Load(path); } catch (InvalidDataException ex) { message = ex.Message; }
+    Runner.IsTrue(message?.Contains("Update RuneFoundry") == true, "refused with a reason: " + message);
+    Runner.AreEqual(json, File.ReadAllText(path), "the file is untouched");
+});
+
+runner.Test("a new project is stamped, and is not asked to upgrade", () =>
+{
+    using var sandbox = new Sandbox();
+    var project = sandbox.CreateProject("fresh", "Fresh");
+    Runner.IsFalse(ModProject.CheckUpgrade(project.ProjectPath).NeedsUpgrade, "fresh projects are current");
+    Runner.IsTrue(File.ReadAllText(project.ProjectPath).Contains($"\"editorVersion\": \"{AppVersion.Current}\""),
+        "the file says which release saved it");
+});
+
+runner.Test("migration steps run in order, and only on projects older than them", () =>
+{
+    var steps = new[]
+    {
+        new ProjectMigration("0.0.1", "rename a", j => { j["b"] = j["a"]?.DeepClone(); j.Remove("a"); }),
+        new ProjectMigration("0.0.2", "double b", j => j["b"] = j["b"]!.GetValue<int>() * 2),
+    };
+
+    var old = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse("""{ "a": 5 }""")!;
+    var check = ProjectMigrations.Check(old, steps);
+    Runner.AreEqual(2, check.Steps.Count, "an unstamped file gets every step");
+    ProjectMigrations.Apply(old, check);
+    Runner.AreEqual(10, old["b"]!.GetValue<int>(), "rename, then double, in order");
+
+    var mid = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse("""{ "editorVersion": "0.0.1", "b": 5 }""")!;
+    var midCheck = ProjectMigrations.Check(mid, steps);
+    Runner.AreEqual("double b", midCheck.Steps[0].Summary, "a step a file already has is skipped");
+});
+
+runner.Test("mods from 0.5.0 and 0.6.0 still load", () =>
+{
+    // 0.5.0 had no rules at all; 0.6.0 wrote scenarioVersion 1.
+    var m050 = ModManifest.FromJson(Manifest062
+        .Replace("\"scenarios\": {", "\"unused\": {").Replace("\"scenarioVersion\": 2,", ""));
+    Runner.AreEqual(0, m050.Validate().Count, "0.5.0 validates");
+    Runner.AreEqual(0, m050.Scenarios.Count, "with no rules");
+
+    var m060 = ModManifest.FromJson(Manifest062.Replace("\"scenarioVersion\": 2", "\"scenarioVersion\": 1"));
+    Runner.AreEqual(0, m060.Validate().Count, "0.6.0 validates");
+    Runner.IsTrue(m060.ScenarioVersion <= ScenarioRules.Version, "and its rules are applied, not refused");
+});
+
+runner.Test("release numbers compare on the release, not the tag", () =>
+{
+    Runner.AreEqual(0, AppVersion.Compare("0.6.2-alpha", "0.6.2"), "a pre-release tag is the same release");
+    Runner.IsTrue(AppVersion.Compare("0.6.2", "0.6.10") < 0, "numbers compare as numbers");
+    Runner.IsTrue(AppVersion.Compare("", "0.0.1") < 0, "no stamp is oldest");
+    Runner.IsTrue(AppVersion.Compare("garbage", "0.6.2") < 0, "an unreadable stamp is old, which is accepted");
+    Runner.IsFalse(AppVersion.Current.Contains('+'), "no build metadata in the current version");
+});
+
 return runner.Report();
 
 

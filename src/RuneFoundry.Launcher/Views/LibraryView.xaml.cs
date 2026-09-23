@@ -24,7 +24,7 @@ public partial class LibraryView : UserControl
 
         // The loader's own chrome, driven by the shared service rather than by a second
         // copy of what it does.
-        _applier = new ModApplier(session, Window.GetWindow(this));
+        _applier = new ModApplier(session, () => Window.GetWindow(this));
         _applier.Status += SetStatus;
         _applier.Busy += SetBusy;
         _applier.LibraryChanged += RebuildRows;
@@ -152,7 +152,7 @@ public partial class LibraryView : UserControl
         if (patch.Length > 0)
         {
             PatchText.Text = patch;
-            PatchDot.SetResourceReference(ForegroundProperty, _applier.PatchLevel);
+            PatchDot.SetResourceReference(ForegroundProperty, DotBrush(_applier.PatchLevel));
         }
 
         var watcher = _applier.Watcher;
@@ -174,10 +174,23 @@ public partial class LibraryView : UserControl
         };
 
         WatchText.Text = text;
-        WatchDot.SetResourceReference(ForegroundProperty, brush);
+        WatchDot.SetResourceReference(ForegroundProperty, DotBrush(brush));
         RuleRow.Visibility = Visibility.Visible;
         WatchRow.Visibility = Visibility.Visible;
     }
+
+    /// <summary>
+    /// The brush resource for a status level. The level names come from ModApplier as plain
+    /// words ("Accent", "Warn", "Dim"); they must be turned into brush keys here rather than
+    /// used as keys directly, because "Dim" is also the key of a TextBlock Style, and binding
+    /// Foreground to a Style throws. Anything but Accent or Warn is the dim text brush.
+    /// </summary>
+    private static string DotBrush(string level) => level switch
+    {
+        "Accent" => "Accent",
+        "Warn" => "Warn",
+        _ => "TextDim",
+    };
 
     /// <summary>Stops the watcher. Called when the window closes.</summary>
     public void StopWatching() => _applier.StopWatching();
@@ -212,6 +225,9 @@ public partial class LibraryView : UserControl
         var meta = new List<string>();
         if (!string.IsNullOrWhiteSpace(mod.Version)) meta.Add("Version " + mod.Version);
         if (!string.IsNullOrWhiteSpace(mod.Author)) meta.Add(mod.Author);
+        meta.Add(string.IsNullOrWhiteSpace(mod.BuiltWith)
+            ? "made with RuneFoundry 0.6.2 or earlier"
+            : "made with RuneFoundry " + mod.BuiltWith);
         meta.Add("added " + mod.AddedUtc.ToLocalTime().ToString("d MMM yyyy"));
         DetailMeta.Text = string.Join(" · ", meta);
 

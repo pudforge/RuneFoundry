@@ -21,13 +21,21 @@ namespace RuneFoundry.UI;
 public sealed class ModApplier
 {
     private readonly Session _session;
-    private readonly Window? _owner;
+    private readonly Func<Window?> _ownerOf;
 
-    public ModApplier(Session session, Window? owner)
+    public ModApplier(Session session, Window? owner) : this(session, () => owner) { }
+
+    /// <summary>
+    /// For a host that is not in a window yet when it builds the applier — a view's
+    /// constructor runs before it is parented, so asking for its window there gives null.
+    /// </summary>
+    public ModApplier(Session session, Func<Window?> owner)
     {
         _session = session;
-        _owner = owner;
+        _ownerOf = owner;
     }
+
+    private Window? _owner => _ownerOf();
 
     /// <summary>Something worth saying in a status line.</summary>
     public event Action<string>? Status;

@@ -34,14 +34,24 @@ public static class Ui
 
     public static bool IsElevated() => RuneFoundry.Core.GameLauncher.IsElevated();
 
+    // MessageBox.Show throws ArgumentNullException on a null owner rather than falling back
+    // to an ownerless dialog, so every helper below picks the overload by whether there is an
+    // owner. A message can arrive after its window has closed — the tail of an apply whose
+    // window was shut mid-run — and that must not itself crash.
     public static void Error(Window? owner, string title, string message)
-        => MessageBox.Show(owner!, message, title, MessageBoxButton.OK, MessageBoxImage.Error);
+        => Show(owner, message, title, MessageBoxButton.OK, MessageBoxImage.Error);
 
     public static void Info(Window? owner, string title, string message)
-        => MessageBox.Show(owner!, message, title, MessageBoxButton.OK, MessageBoxImage.Information);
+        => Show(owner, message, title, MessageBoxButton.OK, MessageBoxImage.Information);
 
     public static bool Confirm(Window? owner, string title, string message)
-        => MessageBox.Show(owner!, message, title, MessageBoxButton.OKCancel, MessageBoxImage.Warning) == MessageBoxResult.OK;
+        => Show(owner, message, title, MessageBoxButton.OKCancel, MessageBoxImage.Warning) == MessageBoxResult.OK;
+
+    private static MessageBoxResult Show(Window? owner, string message, string title,
+                                        MessageBoxButton button, MessageBoxImage icon)
+        => owner is null
+            ? MessageBox.Show(message, title, button, icon)
+            : MessageBox.Show(owner, message, title, button, icon);
 
     /// <summary>
     /// The one way the whole program says an action did not work.

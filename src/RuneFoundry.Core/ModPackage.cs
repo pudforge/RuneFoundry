@@ -183,22 +183,30 @@ public sealed class ModPackage : IDisposable
                 }
 
                 byPath.TryGetValue(relativePath, out var existing);
+
+                // Of what was written, not of what was read: a hash that described the
+                // source file would fail verification on install for every map.
+                var sha = payload is not null
+                    ? Hashing.Sha256Bytes(payload)
+                    : Hashing.Sha256File(pair.Value);
+
                 entries.Add(new ModFileEntry
                 {
                     Path = relativePath,
-                    // Of what was written, not of what was read: a hash that described the
-                    // source file would fail verification on install for every map.
-                    Sha256 = payload is not null
-                        ? Hashing.Sha256Bytes(payload)
-                        : Hashing.Sha256File(pair.Value),
+                    Sha256 = sha,
                     Size = payload?.Length ?? info.Length,
                     IsNew = existing?.IsNew ?? false,
-                    BaseSha256 = existing?.BaseSha256,
+                    // A "stock" hash equal to the payload's was read from a game folder that
+                    // already held this mod, and says nothing about the stock file.
+                    BaseSha256 = string.Equals(existing?.BaseSha256, sha, StringComparison.OrdinalIgnoreCase)
+                        ? null
+                        : existing?.BaseSha256,
                 });
             }
 
             manifest.Files = entries;
             manifest.Schema = ModManifest.CurrentSchema;
+            manifest.BuiltWith = AppVersion.Current;
 
             var problems = manifest.Validate();
             if (problems.Count > 0)

@@ -71,6 +71,7 @@ public sealed class ModInstaller
         record.Version = manifest.Version;
         record.Author = manifest.Author;
         record.Description = manifest.Description;
+        record.BuiltWith = manifest.BuiltWith;
         record.ProvidedPaths = manifest.Files.Select(f => PathSafety.Normalize(f.Path)).ToList();
         if (existing is null)
         {

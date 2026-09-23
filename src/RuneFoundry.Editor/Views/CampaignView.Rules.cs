@@ -37,7 +37,7 @@ public sealed class ConditionRow : Observable
         new RuleChoice("own unit category", ConditionKind.OwnUnits, "category"),
         new RuleChoice("face no enemy", ConditionKind.EnemyHasNone),
         new RuleChoice("are eliminated", ConditionKind.PlayerEliminated),
-        new RuleChoice("have delivered", ConditionKind.Delivered),
+        new RuleChoice("have delivered to the Circle of Power", ConditionKind.Delivered),
         new RuleChoice("have rescued", ConditionKind.Rescued),
         new RuleChoice("hold", ConditionKind.Resource),
         new RuleChoice("have killed", ConditionKind.Kills),
@@ -50,7 +50,7 @@ public sealed class ConditionRow : Observable
         new RuleChoice("owns unit category", ConditionKind.OwnUnits, "category"),
         new RuleChoice("faces no enemy", ConditionKind.EnemyHasNone),
         new RuleChoice("is eliminated", ConditionKind.PlayerEliminated),
-        new RuleChoice("has delivered", ConditionKind.Delivered),
+        new RuleChoice("has delivered to the Circle of Power", ConditionKind.Delivered),
         new RuleChoice("has rescued", ConditionKind.Rescued),
         new RuleChoice("holds", ConditionKind.Resource),
         new RuleChoice("has killed", ConditionKind.Kills),
@@ -164,7 +164,7 @@ public sealed class ConditionRow : Observable
     /// </summary>
     public ConditionRow()
     {
-        _counter = Counters.FirstOrDefault();
+        _counter = Counters.FirstOrDefault(c => c.Value != null);
     }
 
     // Instance properties, because a template binds to the row rather than to the type.
@@ -272,11 +272,31 @@ public sealed class ConditionRow : Observable
     public IReadOnlyList<RuleChoice> Counters => KindValue switch
     {
         ConditionKind.Resource => ResourceCatalog.All.Select(c => new RuleChoice(c.Label, c.Name)).ToList(),
-        ConditionKind.OwnUnits => UnitTypeCatalog.All
-            .Where(c => c.Group == (OwnsCategory ? UnitTypeCatalog.GroupsGroup : UnitTypeCatalog.UnitsGroup))
-            .Select(c => new RuleChoice(c.Label, c.Name)).ToList(),
+        ConditionKind.OwnUnits => OwnsCategory
+            ? UnitTypeCatalog.All.Where(c => c.Group == UnitTypeCatalog.GroupsGroup)
+                .Select(c => new RuleChoice(c.Label, c.Name)).ToList()
+            : UnitsByRace(),
         _ => CounterCatalog.All.Select(c => new RuleChoice(c.Label, c.Name)).ToList(),
     };
+
+    /// <summary>
+    /// The exact units, grouped by race under a heading each, so the list reads Human, then
+    /// Orc, then Neutral rather than one long alternating run. The heading rows carry no
+    /// value and are drawn dim and unselectable; the visible dashes group them even if the
+    /// styling does not take.
+    /// </summary>
+    private static IReadOnlyList<RuleChoice> UnitsByRace()
+    {
+        var list = new List<RuleChoice>();
+        foreach (var race in new[] { UnitTypeCatalog.Human, UnitTypeCatalog.Orc, UnitTypeCatalog.Neutral })
+        {
+            var units = UnitTypeCatalog.All.Where(c => c.Group == UnitTypeCatalog.UnitsGroup && c.Race == race).ToList();
+            if (units.Count == 0) continue;
+            list.Add(new RuleChoice($"── {race} ──", null, Heading));
+            list.AddRange(units.Select(c => new RuleChoice(c.Label, c.Name)));
+        }
+        return list;
+    }
 
     public bool NeedsCounter => KindValue is ConditionKind.OwnCount or ConditionKind.EnemyHasNone
         or ConditionKind.UnitAlive or ConditionKind.Resource or ConditionKind.OwnUnits;
@@ -331,8 +351,8 @@ public sealed class ConditionRow : Observable
                 ConditionKind.PlayerEliminated => $"{who} {verb}",
                 ConditionKind.UnitAlive => $"{who} still {(second ? "have" : "has")} a {thing}",
                 ConditionKind.Delivered => Heroes > 0
-                    ? $"{who} {verb} {how} {Count} to the Circle of Power, {Heroes} of them heroes"
-                    : $"{who} {verb} {how} {Count} to the Circle of Power",
+                    ? $"{who} {(second ? "have" : "has")} delivered {how} {Count} to the Circle of Power, {Heroes} of them heroes"
+                    : $"{who} {(second ? "have" : "has")} delivered {how} {Count} to the Circle of Power",
                 ConditionKind.Rescued => $"{who} {verb} {how} {Count}",
                 ConditionKind.Resource => $"{who} {verb} {how} {Count} {thing}",
                 ConditionKind.Kills => $"{who} {verb} {how} {Count}",

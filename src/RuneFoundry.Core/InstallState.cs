@@ -25,6 +25,8 @@ public sealed class InstalledMod
     [JsonPropertyName("version")] public string Version { get; set; } = "";
     [JsonPropertyName("author")] public string Author { get; set; } = "";
     [JsonPropertyName("description")] public string Description { get; set; } = "";
+    /// <summary>The RuneFoundry release that packaged it; empty for mods from 0.6.2 and earlier.</summary>
+    [JsonPropertyName("builtWith")] public string BuiltWith { get; set; } = "";
     [JsonPropertyName("addedUtc")] public DateTime AddedUtc { get; set; } = DateTime.UtcNow;
 
     /// <summary>Disabled mods stay in the library and keep their package, but write nothing to the game.</summary>

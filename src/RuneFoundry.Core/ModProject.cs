@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 using RuneFoundry.Core.Scenarios;
@@ -18,7 +19,17 @@ public sealed class ModProject
     public const int CurrentSchema = 1;
     public const string Extension = ".w2proj";
 
+    public const string EditorVersionKey = "editorVersion";
+
     [JsonPropertyName("schema")] public int Schema { get; set; } = CurrentSchema;
+
+    /// <summary>
+    /// The editor release that last saved this project. Empty for projects from 0.6.2 and
+    /// earlier. An older one is upgraded through <see cref="ProjectMigrations"/> once the
+    /// author agrees; a newer one is refused, since this editor would drop what it cannot read.
+    /// </summary>
+    [JsonPropertyName(EditorVersionKey)] public string EditorVersion { get; set; } = AppVersion.Current;
+
     [JsonPropertyName("id")] public string Id { get; set; } = "";
     [JsonPropertyName("name")] public string Name { get; set; } = "";
     [JsonPropertyName("version")] public string Version { get; set; } = "1.0.0";
@@ -138,17 +149,61 @@ public sealed class ModProject
         return project;
     }
 
+    /// <summary>
+    /// Reads what opening a project would involve, without changing anything: whether it
+    /// comes from a newer editor, and which upgrade steps an older one needs.
+    /// </summary>
+    public static ProjectUpgradeCheck CheckUpgrade(string projectPath) =>
+        ProjectMigrations.Check(ReadJson(projectPath));
+
+    /// <summary>
+    /// Opens a project from any earlier release, upgraded in memory. Nothing is written
+    /// here: the file changes on the next save, so a caller that means to ask first asks
+    /// with <see cref="CheckUpgrade"/> before calling this, and then <see cref="CommitUpgrade"/>.
+    /// A project from a newer editor is refused.
+    /// </summary>
     public static ModProject Load(string projectPath)
     {
-        var project = JsonSerializer.Deserialize<ModProject>(File.ReadAllText(projectPath), Options)
+        var json = ReadJson(projectPath);
+        var check = ProjectMigrations.Check(json);
+        if (check.IsNewerThanEditor)
+            throw new InvalidDataException(
+                $"This project was saved by RuneFoundry {check.FileVersion}, and this is RuneFoundry "
+                + $"{AppVersion.Current}. Update RuneFoundry to open it; opening it here could lose "
+                + "what this version does not understand.");
+
+        ProjectMigrations.Apply(json, check);
+
+        var project = json.Deserialize<ModProject>(Options)
             ?? throw new InvalidDataException("Project file is empty or malformed.");
         project.ProjectPath = Path.GetFullPath(projectPath);
+        // What the file says, not this build: it is only this build's once it is saved.
+        project.EditorVersion = check.FileVersion;
         Directory.CreateDirectory(project.ContentRoot);
         return project;
     }
 
+    /// <summary>
+    /// Writes an upgraded project, keeping the file as it was beside it
+    /// ("name.w2proj.0.6.2.bak") so the older editor can still be pointed at the copy.
+    /// Returns the backup's path.
+    /// </summary>
+    public string CommitUpgrade()
+    {
+        var label = string.IsNullOrWhiteSpace(EditorVersion) ? "0.6.2-or-earlier" : EditorVersion;
+        var backup = $"{ProjectPath}.{label}.bak";
+        File.Copy(ProjectPath, backup, overwrite: true);
+        Save();
+        return backup;
+    }
+
+    private static JsonObject ReadJson(string projectPath) =>
+        JsonNode.Parse(File.ReadAllText(projectPath)) as JsonObject
+        ?? throw new InvalidDataException("Project file is empty or malformed.");
+
     public void Save()
     {
+        EditorVersion = AppVersion.Current;
         var temp = ProjectPath + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(this, Options));
         File.Move(temp, ProjectPath, overwrite: true);
@@ -324,7 +379,12 @@ public sealed class ModProject
             _hashes[path] = (infos[path].Length, infos[path].LastWriteTimeUtc, sha);
     }
 
-    public ModManifest BuildManifest(GameInstall? game)
+    /// <param name="vault">
+    /// Where the game's own copies are kept while a mod is applied. Pass it whenever there is
+    /// one: after "Save and test" the game folder holds this mod's files, and hashing those
+    /// as the stock ones records the mod as its own base.
+    /// </param>
+    public ModManifest BuildManifest(GameInstall? game, BackupVault? vault = null)
     {
         var manifest = new ModManifest
         {
@@ -341,18 +401,21 @@ public sealed class ModProject
             Scenarios = new Dictionary<int, ScenarioRules>(Scenarios),
         };
 
+        string StockPath(string relativePath) =>
+            vault?.StockFile(game!, relativePath) ?? game!.ResolveDataPath(relativePath);
+
         var stock = game is null
             ? new Dictionary<string, string>()
-            : Hashing.Sha256Files(EnumerateOverrides().Select(game.ResolveDataPath).Where(File.Exists));
+            : Hashing.Sha256Files(EnumerateOverrides().Select(StockPath).Where(File.Exists));
 
         foreach (var relativePath in EnumerateOverrides())
         {
             var entry = new ModFileEntry { Path = relativePath };
             if (game is not null)
             {
-                var gamePath = game.ResolveDataPath(relativePath);
-                if (File.Exists(gamePath))
-                    entry.BaseSha256 = stock.GetValueOrDefault(gamePath) ?? Hashing.Sha256File(gamePath);
+                var stockPath = StockPath(relativePath);
+                if (File.Exists(stockPath))
+                    entry.BaseSha256 = stock.GetValueOrDefault(stockPath) ?? Hashing.Sha256File(stockPath);
                 else entry.IsNew = true;
             }
             manifest.Files.Add(entry);
@@ -361,7 +424,8 @@ public sealed class ModProject
     }
 
     /// <summary>Writes the distributable .w2mod. Hashes and sizes are filled in by the packager.</summary>
-    public ModManifest Build(string destinationPath, GameInstall? game, IProgress<string>? progress = null)
+    public ModManifest Build(string destinationPath, GameInstall? game, IProgress<string>? progress = null,
+                             BackupVault? vault = null)
     {
         var overrides = EnumerateOverrides();
 
@@ -381,6 +445,6 @@ public sealed class ModProject
             if (File.Exists(previewPath)) preview = File.ReadAllBytes(previewPath);
         }
 
-        return ModPackage.Write(destinationPath, BuildManifest(game), files, preview, progress);
+        return ModPackage.Write(destinationPath, BuildManifest(game, vault), files, preview, progress);
     }
 }

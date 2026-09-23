@@ -28,6 +28,9 @@ public sealed record Counter(
 
     /// <summary>Which section of a dropdown this belongs in, where one has sections.</summary>
     public string Group { get; init; } = "";
+
+    /// <summary>The unit's race, for grouping the unit list. Empty where it does not apply.</summary>
+    public string Race { get; init; } = "";
 }
 
 /// <summary>
@@ -155,6 +158,14 @@ public static class UnitTypeCatalog
     public const string UnitsGroup = "Units";
     public const string GroupsGroup = "Groups";
 
+    public const string Human = "Human";
+    public const string Orc = "Orc";
+    public const string Neutral = "Neutral";
+
+    /// <summary>Race of a unit id. The paired units alternate even Human, odd Orc; the
+    /// three wildlife/summon types are Neutral.</summary>
+    public static string RaceOf(int id) => id is 55 or 56 or 57 ? Neutral : id % 2 == 0 ? Human : Orc;
+
     /// <summary>Units first, then groups, in the order the dropdown shows them.</summary>
     public static readonly IReadOnlyList<Counter> All = BuildAll();
 
@@ -167,7 +178,7 @@ public static class UnitTypeCatalog
             if (Formats.DatNames.IsEmptyUnitId(id)) continue;
             var name = Formats.DatNames.UnitName(id);
             if (name.StartsWith("Unit ", StringComparison.Ordinal) || name.StartsWith("(", StringComparison.Ordinal)) continue;
-            list.Add(new Counter(id.ToString(), name, 0, null, new[] { (byte)id }) { Group = UnitsGroup });
+            list.Add(new Counter(id.ToString(), name, 0, null, new[] { (byte)id }) { Group = UnitsGroup, Race = RaceOf(id) });
         }
 
         var buildings = new HashSet<byte>();

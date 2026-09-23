@@ -38,6 +38,13 @@ public sealed class ModManifest
     /// <summary>Free-form note about which game build this was authored against.</summary>
     [JsonPropertyName("builtAgainst")] public string BuiltAgainst { get; set; } = "";
 
+    /// <summary>
+    /// The RuneFoundry release that packaged this mod, "0.6.2-alpha". Empty on mods made
+    /// before the field existed (0.6.2 and earlier), which are read as the oldest format.
+    /// A mod from a newer release than this one is refused; see <see cref="AppVersion"/>.
+    /// </summary>
+    [JsonPropertyName("builtWith")] public string BuiltWith { get; set; } = "";
+
     [JsonPropertyName("files")] public List<ModFileEntry> Files { get; set; } = new();
 
     /// <summary>
@@ -72,9 +79,48 @@ public sealed class ModManifest
 
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
 
+    /// <summary>
+    /// Reads a manifest from any RuneFoundry release, upgraded to what this build expects.
+    /// Old mods stay playable: every change to the format has to be handled in
+    /// <see cref="Upgrade"/>, never by refusing what an earlier release wrote.
+    /// </summary>
     public static ModManifest FromJson(string json)
-        => JsonSerializer.Deserialize<ModManifest>(json, JsonOptions)
-           ?? throw new InvalidDataException("mod.json is empty or malformed.");
+    {
+        var manifest = JsonSerializer.Deserialize<ModManifest>(json, JsonOptions)
+                       ?? throw new InvalidDataException("mod.json is empty or malformed.");
+        manifest.Upgrade();
+        return manifest;
+    }
+
+    /// <summary>Whether this mod was packaged by a release older than the one reading it.</summary>
+    [JsonIgnore]
+    public bool IsFromOlderRelease => AppVersion.Compare(BuiltWith, AppVersion.Current) < 0;
+
+    /// <summary>
+    /// Brings a manifest written by an older release up to the current shape, in place.
+    /// Each step is keyed on what the old release got wrong or left out, so a step is
+    /// harmless on a manifest that never needed it.
+    /// </summary>
+    private void Upgrade()
+    {
+        // Missing collections in hand-written or very old manifests read as null.
+        Files ??= new();
+        Objectives ??= new();
+        Thresholds ??= new();
+        Scenarios ??= new();
+
+        // Before 0.6.3 the editor took a file's stock hash from the game folder, which holds
+        // the mod's own copy once "Save and test" has applied it. Such a hash equals the
+        // payload's and describes nothing stock; left in, it makes the loader warn that every
+        // file "differs from the copy this mod was built against". Dropping it only loses a
+        // drift warning that could never have been right.
+        foreach (var file in Files)
+        {
+            if (file.BaseSha256 is not null &&
+                string.Equals(file.BaseSha256, file.Sha256, StringComparison.OrdinalIgnoreCase))
+                file.BaseSha256 = null;
+        }
+    }
 
     public long TotalSize => Files.Sum(f => f.Size);
 
@@ -96,7 +142,11 @@ public sealed class ModManifest
         var problems = new List<string>();
 
         if (Schema > CurrentSchema)
-            problems.Add($"Package uses manifest schema {Schema}; this build understands up to {CurrentSchema}. Update the tools.");
+            problems.Add($"Package uses manifest schema {Schema}; this build understands up to {CurrentSchema}. Update RuneFoundry.");
+        // A newer release may have added fields this one would silently skip, so the mod
+        // would be only partly applied. Saying so beats a mission that quietly misbehaves.
+        if (AppVersion.IsNewerThanCurrent(BuiltWith))
+            problems.Add($"This mod was made with RuneFoundry {BuiltWith}, and this is RuneFoundry {AppVersion.Current}. Update RuneFoundry to play it.");
         if (!PathSafety.IsValidModId(Id))
             problems.Add($"Mod id '{Id}' is invalid. Use 2-64 characters of lowercase letters, digits, dot, dash or underscore.");
         if (string.IsNullOrWhiteSpace(Name))

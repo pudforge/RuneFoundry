@@ -6095,6 +6095,34 @@ runner.Test("release numbers compare on the release, not the tag", () =>
     Runner.IsFalse(AppVersion.Current.Contains('+'), "no build metadata in the current version");
 });
 
+runner.Test("run as administrator is read from the compatibility flags", () =>
+{
+    Runner.IsTrue(RunAsAdmin.RequestsElevation("~ RUNASADMIN"), "the Compatibility tab's own value");
+    Runner.IsTrue(RunAsAdmin.RequestsElevation("$ HIGHDPIAWARE runasadmin"), "among other flags, any case");
+    Runner.IsFalse(RunAsAdmin.RequestsElevation("~ HIGHDPIAWARE"), "other flags alone");
+    Runner.IsFalse(RunAsAdmin.RequestsElevation("~ RUNASADMINX"), "a longer flag is not this one");
+    Runner.IsFalse(RunAsAdmin.RequestsElevation(null), "no value");
+
+    // A real value under HKCU, for a path that cannot exist, removed again afterwards.
+    var fake = Path.Combine(Path.GetTempPath(), $"rf-{Guid.NewGuid():N}", "Warcraft II.exe");
+    const string layers = @"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers";
+    using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(layers);
+    try
+    {
+        key.SetValue(fake, "~ RUNASADMIN");
+        var flagged = RunAsAdmin.Flagged(new[] { fake, fake + ".other" });
+        Runner.AreEqual(1, flagged.Count, "only the flagged path");
+        Runner.AreEqual(fake, flagged[0], "the flagged path itself");
+
+        key.SetValue(fake, "~ HIGHDPIAWARE");
+        Runner.AreEqual(0, RunAsAdmin.Flagged(new[] { fake }).Count, "unticked once the flag is gone");
+    }
+    finally
+    {
+        key.DeleteValue(fake, throwOnMissingValue: false);
+    }
+});
+
 return runner.Report();
 
 

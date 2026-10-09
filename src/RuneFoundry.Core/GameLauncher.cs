@@ -161,10 +161,20 @@ public static class GameLauncher
         // put on it. So a chosen mission takes the direct route whatever the setting says.
         return method == LaunchMethod.Direct || !string.IsNullOrWhiteSpace(Scenario)
             ? TryLaunchDirectly(game, out error)
-            : TryLaunchViaClient(out error, progress);
+            : TryLaunchViaClient(game, out error, progress);
     }
 
-    private static bool TryLaunchViaClient(out string error, Action<string>? progress)
+    /// <summary>
+    /// A client set to run as administrator is one way the game never appears, and nothing
+    /// on screen says so. Name it when it is the case.
+    /// </summary>
+    private static string WithAdminAdvice(GameInstall game, string error)
+    {
+        var advice = RunAsAdmin.Advice(game);
+        return advice.Length > 0 ? error + "\n\n" + advice : error;
+    }
+
+    private static bool TryLaunchViaClient(GameInstall game, out string error, Action<string>? progress)
     {
         error = "";
 
@@ -191,8 +201,8 @@ public static class GameLauncher
             if (!WaitFor(() => IsBattleNetRunning, TimeSpan.FromSeconds(90),
                     progress, "Waiting for Battle.net\u2026 sign in if it asks."))
             {
-                error = "Battle.net did not come up within 90 seconds.\n\n" +
-                        "Once it is running and signed in, press Play again. The mod is already applied.";
+                error = WithAdminAdvice(game, "Battle.net did not come up within 90 seconds.\n\n" +
+                        "Once it is running and signed in, press Play again. The mod is already applied.");
                 return false;
             }
 
@@ -214,9 +224,9 @@ public static class GameLauncher
         // process started — asking the client to launch always "succeeds" by itself.
         if (!WaitFor(() => IsGameRunning, TimeSpan.FromSeconds(60), progress, "Waiting for the game\u2026"))
         {
-            error = "Battle.net was asked to start the game but it has not appeared.\n\n" +
+            error = WithAdminAdvice(game, "Battle.net was asked to start the game but it has not appeared.\n\n" +
                     "If Battle.net is showing a sign-in or an update, finish that and press Play again. " +
-                    "The mod is already applied.";
+                    "The mod is already applied.");
             return false;
         }
 

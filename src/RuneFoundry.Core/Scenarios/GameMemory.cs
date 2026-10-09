@@ -61,28 +61,52 @@ public sealed class GameMemory : IDisposable
     /// Opens a running game for reading. Null when the process is gone, when it cannot be
     /// opened, or when its main module cannot be found.
     /// </summary>
-    public static GameMemory? Open(Process game)
+    public static GameMemory? Open(Process game) => Open(game, out _);
+
+    /// <summary>
+    /// Opens a running game for reading, and says whether Windows refused access. A refusal
+    /// almost always means the game runs as administrator and this process does not, which
+    /// is worth telling the player in so many words.
+    /// </summary>
+    public static GameMemory? Open(Process game, out bool accessDenied)
     {
+        accessDenied = false;
+        var handle = IntPtr.Zero;
+
         try
         {
             if (game.HasExited) return null;
 
-            var module = game.MainModule;
-            if (module is null) return null;
+            // The handle first: its error code is the one that explains a refusal.
+            // MainModule fails for the same reason but reports it less plainly.
+            handle = OpenProcess(ProcessVmRead | ProcessQueryInformation, false, game.Id);
+            if (handle == IntPtr.Zero)
+            {
+                accessDenied = Marshal.GetLastWin32Error() == ErrorAccessDenied;
+                return null;
+            }
 
-            var handle = OpenProcess(ProcessVmRead | ProcessQueryInformation, false, game.Id);
-            if (handle == IntPtr.Zero) return null;
+            var module = game.MainModule;
+            if (module is null)
+            {
+                CloseHandle(handle);
+                return null;
+            }
 
             var slide = module.BaseAddress.ToInt64() - GameAddresses.PreferredBase;
             return new GameMemory(game, handle, slide);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // A process that exits mid-open, or one this account may not touch. Both are
             // "no game to read", which the caller already has to handle.
+            if (handle != IntPtr.Zero) CloseHandle(handle);
+            accessDenied = ex is System.ComponentModel.Win32Exception { NativeErrorCode: ErrorAccessDenied };
             return null;
         }
     }
+
+    private const int ErrorAccessDenied = 5;
 
     private IntPtr At(uint address) => new(address + Slide);
 

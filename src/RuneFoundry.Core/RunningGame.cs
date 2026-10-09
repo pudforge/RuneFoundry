@@ -120,7 +120,10 @@ public static class RunningGame
         }
         catch (Exception ex)
         {
-            return new Result(false, 0, "Could not find the game in memory: " + ex.Message);
+            var advice = ex is System.ComponentModel.Win32Exception { NativeErrorCode: 5 }
+                ? RunAsAdmin.AdviceForDeniedAccess(game)
+                : RunAsAdmin.Advice(game);
+            return new Result(false, 0, ("Could not find the game in memory: " + ex.Message + " " + advice).TrimEnd());
         }
 
         var delta = baseAddress.ToInt64() - PreferredBase;
@@ -129,7 +132,11 @@ public static class RunningGame
             ProcessVmRead | ProcessVmWrite | ProcessVmOperation | ProcessQueryInformation, false, process.Id);
 
         if (handle == IntPtr.Zero)
-            return new Result(false, 0, $"Could not open the game (error {Marshal.GetLastWin32Error()}).");
+        {
+            var error = Marshal.GetLastWin32Error();
+            var advice = error == 5 ? RunAsAdmin.AdviceForDeniedAccess(game) : RunAsAdmin.Advice(game);
+            return new Result(false, 0, $"Could not open the game (error {error}). {advice}".TrimEnd());
+        }
 
         try
         {

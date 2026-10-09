@@ -152,10 +152,13 @@ public sealed class ScenarioEngine : IDisposable
             return null;
         }
 
-        var memory = GameMemory.Open(process);
+        var memory = GameMemory.Open(process, out var accessDenied);
         if (memory is null)
         {
-            refusal = new ScenarioRefusal("RuneFoundry could not open the running game.");
+            var advice = accessDenied ? RunAsAdmin.AdviceForDeniedAccess(game) : RunAsAdmin.Advice(game);
+            refusal = new ScenarioRefusal(advice.Length > 0
+                ? "RuneFoundry could not open the running game. " + advice
+                : "RuneFoundry could not open the running game.");
             return null;
         }
 
